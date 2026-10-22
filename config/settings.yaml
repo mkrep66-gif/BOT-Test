@@ -59,7 +59,7 @@ stray_offer_max_age_seconds: 120
 # Your time zone for "Profit today", the daily history and the daily loss cap
 # (which all reset at your local midnight). Use a name like "Europe/London" or
 # "America/New_York". Empty = this computer's own time zone.
-timezone: ""
+timezone: "America/New_York"
 
 # Two-step (non-atomic) mode: only used if the ledger's all-or-nothing Batch
 # feature isn't available. OFF until you've read the risk explanation and agreed.
