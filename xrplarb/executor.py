@@ -205,6 +205,12 @@ class Executor:
             if r.is_successful() and r.result.get("validated"):
                 return r.result
             if await get_latest_validated_ledger_sequence(client) > lls:
+                # The deadline ledger may have closed (with our transaction in
+                # it) since the lookup above, so look once more before
+                # declaring it expired.
+                r = await client.request(Tx(transaction=tx_hash))
+                if r.is_successful() and r.result.get("validated"):
+                    return r.result
                 return {**base, "tx_json": {"Fee": "0"}, "meta": {"TransactionResult": f"expired({prelim})"}}
 
     async def _inner_results(self, batch_hash: str, ledger_index: int) -> List[Dict[str, Any]]:

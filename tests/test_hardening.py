@@ -326,3 +326,49 @@ def test_failing_transaction_server_is_swapped_out():
     assert run(net.working_client()) is a
     run(net.report_failure(a, ConnectionError("reset")))
     assert run(net.working_client()) is b
+
+
+def test_transaction_validated_at_deadline_is_not_reported_expired(monkeypatch):
+    # Race seen live: tx not yet validated -> ledger passes the deadline ->
+    # tx was in fact validated in the deadline ledger.
+    import xrplarb.executor as ex_mod
+    from xrplarb.executor import Executor
+
+    class Signed:
+        last_ledger_sequence = 10
+        fee = "12"
+
+        def get_hash(self):
+            return "H"
+
+    async def fake_sign(tx, client, wallet):
+        return Signed()
+
+    async def fake_submit(signed, client):
+        return Response(status=ResponseStatus.SUCCESS, result={"engine_result": "tesSUCCESS"})
+
+    async def latest(client):
+        return 11
+
+    async def no_sleep(_):
+        pass
+
+    lookups = []
+
+    class Client:
+        async def request(self, req):
+            lookups.append(1)
+            done = len(lookups) > 1
+            return Response(status=ResponseStatus.SUCCESS,
+                            result={"validated": done, "meta": {"TransactionResult": "tesSUCCESS"}})
+
+    monkeypatch.setattr(ex_mod, "autofill_and_sign", fake_sign)
+    monkeypatch.setattr(ex_mod, "submit", fake_submit)
+    monkeypatch.setattr(ex_mod, "get_latest_validated_ledger_sequence", latest)
+    monkeypatch.setattr(ex_mod.asyncio, "sleep", no_sleep)
+
+    class W:
+        classic_address = "rBOT"
+
+    r = run(Executor(None, W())._submit_on(Client(), object()))
+    assert r["meta"]["TransactionResult"] == "tesSUCCESS"
