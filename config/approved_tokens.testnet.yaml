@@ -1,0 +1,30 @@
+# Tokens the bots may trade on this network.
+# A token is only used when `approved: true`. Approval is done with:
+#   python -m xrplarb tokens approve <CURRENCY.ISSUER> --network testnet
+# and only after the owner has confirmed it in writing.
+network: testnet
+tokens:
+- name: TUS (testnet lab token)
+  currency: TUS
+  issuer: r93iwyqNYXszEbRAbCM7WLHTQj1fRDmAGr
+  approved: false
+  verdict: CAUTION
+  review_summary:
+  - Buying and immediately selling 100 XRP worth loses 88.91% - prices move a lot
+    with size.
+- name: TEU (testnet lab token)
+  currency: TEU
+  issuer: r93iwyqNYXszEbRAbCM7WLHTQj1fRDmAGr
+  approved: false
+  verdict: CAUTION
+  review_summary:
+  - Buying and immediately selling 100 XRP worth loses 88.91% - prices move a lot
+    with size.
+- name: TGB (testnet lab token)
+  currency: TGB
+  issuer: rL4c4udeKEHQRLvomLwK4gbb8ppexH9aAa
+  approved: false
+  verdict: CAUTION
+  review_summary:
+  - Buying and immediately selling 100 XRP worth loses 88.92% - prices move a lot
+    with size.

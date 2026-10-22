@@ -1,0 +1,6 @@
+# Token/token markets found on the ledger (written by `discover`).
+token_pairs:
+- - TUS.r93iwyqNYXszEbRAbCM7WLHTQj1fRDmAGr
+  - TEU.r93iwyqNYXszEbRAbCM7WLHTQj1fRDmAGr
+- - TEU.r93iwyqNYXszEbRAbCM7WLHTQj1fRDmAGr
+  - TGB.rL4c4udeKEHQRLvomLwK4gbb8ppexH9aAa

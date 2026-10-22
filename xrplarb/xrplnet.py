@@ -14,8 +14,8 @@ from xrpl.asyncio.clients import AsyncJsonRpcClient
 from xrpl.models.requests import (
     AccountInfo,
     AccountLines,
-    AMMInfo,
     BookOffers,
+    GenericRequest,
     LedgerEntry,
     ServerInfo,
 )
@@ -157,7 +157,11 @@ class Net:
 
     async def amm_info(self, a: Asset, b: Asset) -> Optional[Dict[str, Any]]:
         try:
-            r = await self.request(AMMInfo(asset=_cur(a), asset2=_cur(b), ledger_index="validated"))
+            # xrpl-py's AMMInfo model has no ledger_index field; send it raw so we
+            # read the same validated ledger as book_offers.
+            r = await self.request(
+                GenericRequest(method="amm_info", asset=_cur(a).to_dict(), asset2=_cur(b).to_dict(), ledger_index="validated")
+            )
         except RPCError as e:
             if e.error in ("actNotFound", "entryNotFound", "invalidParams"):
                 return None

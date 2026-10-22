@@ -147,3 +147,23 @@ def test_working_client_skips_unreachable_server():
     up = Up()
     net.clients = [Down(), up]
     assert asyncio.run(net.working_client()) is up
+
+
+def test_amm_info_request_builds_and_reads_validated_ledger():
+    # xrpl-py's AMMInfo model rejects ledger_index; this used to raise TypeError
+    # and every pool was silently dropped as a fetch error.
+    import asyncio
+
+    from xrplarb.xrplnet import Net
+
+    sent = []
+    net = Net(["https://x/"])
+
+    async def fake_request(req, retries=3):
+        sent.append(req.to_dict())
+        return {"amm": {"amount": "1"}}
+
+    net.request = fake_request
+    assert asyncio.run(net.amm_info(XRP, A)) == {"amount": "1"}
+    assert sent[0]["method"] == "amm_info" and sent[0]["ledger_index"] == "validated"
+    assert sent[0]["asset"] == {"currency": "XRP"} and sent[0]["asset2"] == {"currency": "USD", "issuer": ISS_A}
