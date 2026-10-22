@@ -1,0 +1,5 @@
+"env": {
+    "ALLOWED_EGRESS_PORTS": "51234",
+    "ALLOWED_EGRESS_DOMAINS": "*.ripple.com,*.xrpl.org"
+  }
+}
