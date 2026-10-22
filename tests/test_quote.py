@@ -69,3 +69,22 @@ def test_thin_book_loop_marked_unfilled():
         Edge(USD, XRP, offers=[Offer(D(100), D(1))]),
     ]
     assert not quote_loop(edges, D(10)).filled
+
+
+def test_token_held_between_the_two_payments_pays_its_transfer_fee_twice():
+    # Verified against the ledger's own simulation: XRP -> TGB (0.2% fee)
+    # delivers 1/1.002 of the pool output into our wallet, and selling it
+    # back costs the fee again.
+    from decimal import Decimal as D
+
+    from xrplarb.amounts import XRP, Asset
+    from xrplarb.quote import AmmPool, Edge, quote_loop, swap
+
+    A, G = Asset("AAA", "rA"), Asset("TGB", "rG")
+    e1 = Edge(XRP, A, amm=AmmPool(D(100), D(100), D("0.003")))
+    e2 = Edge(A, G, amm=AmmPool(D(100), D(100), D("0.003")))
+    e3 = Edge(G, XRP, amm=AmmPool(D(100), D(100), D("0.003")), transfer_rate_in=D("1.002"))
+    q = quote_loop([e1, e2, e3], D(1))
+    pool_out = swap(e2, swap(e1, D(1)).amount_out).amount_out
+    assert q.leg_outputs[1] == pool_out / D("1.002")
+    assert q.amount_out == swap(e3, q.leg_outputs[1]).amount_out

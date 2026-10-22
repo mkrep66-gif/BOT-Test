@@ -197,18 +197,34 @@ class LoopQuote:
         return self.amount_out - self.amount_in
 
 
+def held_token_rate(edges: Sequence[Edge]) -> Decimal:
+    """A loop is sent as two payments: XRP -> ... -> last token into our
+    wallet, then last token -> XRP. The last token therefore moves twice
+    (pool -> us, us -> pool) and its issuer's transfer fee is charged both
+    times. Edges only carry the fee on their input side, so this is the extra
+    one, charged when the token arrives in our wallet. (Checked against the
+    ledger's own simulation on Testnet.)"""
+    return edges[-1].transfer_rate_in if len(edges) >= 2 else ONE
+
+
 def quote_loop(edges: Sequence[Edge], amount_in: Decimal) -> LoopQuote:
     amt = amount_in
     outs, tfees, afees = [], [], []
     filled = True
-    for e in edges:
+    for i, e in enumerate(edges):
         if amt > max_input(e):
             filled = False
         r = swap(e, amt)
-        outs.append(r.amount_out)
-        tfees.append(r.transfer_fee_paid)
+        out = r.amount_out
+        tfee = r.transfer_fee_paid
+        if i == len(edges) - 2:  # delivered into our wallet between the two payments
+            rate = held_token_rate(edges)
+            tfee += out - out / rate
+            out = out / rate
+        outs.append(out)
+        tfees.append(tfee)
         afees.append(r.amm_fee_paid)
-        amt = r.amount_out
+        amt = out
         if amt <= 0:
             filled = False
             break
@@ -217,7 +233,7 @@ def quote_loop(edges: Sequence[Edge], amount_in: Decimal) -> LoopQuote:
 
 def loop_marginal_rate(edges: Sequence[Edge]) -> Decimal:
     """Product of marginal rates. If <= 1 there is no profit even at tiny size."""
-    r = ONE
+    r = ONE / held_token_rate(edges) if edges else ONE
     for e in edges:
         r *= e.marginal_rate()
         if r == 0:

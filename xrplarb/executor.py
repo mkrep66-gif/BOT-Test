@@ -80,12 +80,18 @@ def _paths_for(opp: Opportunity) -> Optional[List[List[PathStep]]]:
 
 def build_payments(address: str, opp: Opportunity, inner: bool) -> List[Payment]:
     last = opp.route.tokens[-1]
+    paths = _paths_for(opp)
     p1 = Payment(
         account=address,
         destination=address,
         amount=make_amount_model(last, opp.last_token_target, ROUND_DOWN),
         send_max=make_amount_model(XRP, opp.size_xrp, ROUND_DOWN),
-        paths=_paths_for(opp),
+        paths=paths,
+        # Only our route. Otherwise the ledger also tries its own direct
+        # XRP -> last-token route and mixes the two, which prices pools
+        # differently from what we simulated (seen on Testnet: exact-amount
+        # payments failing with tecPATH_PARTIAL).
+        flags=PaymentFlag.TF_NO_RIPPLE_DIRECT if paths else 0,
         **({"fee": "0", "signing_pub_key": ""} if inner else {}),
     )
     # Ask for "as much XRP as possible" (partial payment), but never less than

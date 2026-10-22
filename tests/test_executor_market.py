@@ -167,3 +167,17 @@ def test_amm_info_request_builds_and_reads_validated_ledger():
     assert asyncio.run(net.amm_info(XRP, A)) == {"amount": "1"}
     assert sent[0]["method"] == "amm_info" and sent[0]["ledger_index"] == "validated"
     assert sent[0]["asset"] == {"currency": "XRP"} and sent[0]["asset2"] == {"currency": "USD", "issuer": ISS_A}
+
+
+def test_first_payment_uses_only_our_route():
+    # Without tfNoRippleDirect the ledger mixes in its own direct route and
+    # an exact-amount first payment can fail (seen on Testnet).
+    from xrpl.models.transactions import PaymentFlag
+
+    from xrplarb.executor import build_payments
+
+    p1, p2 = build_payments(ME, _opp(), inner=False)
+    assert p1.has_flag(PaymentFlag.TF_NO_RIPPLE_DIRECT) and p1.paths
+    assert p2.has_flag(PaymentFlag.TF_PARTIAL_PAYMENT)
+    b = build_atomic_batch(ME, _opp(), 40)
+    assert all(t.has_flag(PaymentFlag.TF_NO_RIPPLE_DIRECT) for t in b.raw_transactions[:1])
