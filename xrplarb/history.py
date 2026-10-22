@@ -186,6 +186,7 @@ def _group_reason(reason: str) -> str:
         ("prices went stale", "prices went stale just before sending"),
         ("market in use by", "another bot was using that market"),
         ("bot not trading", "bot was stopped (kill switch / loss cap / halt)"),
+        ("profit after fees and", "gap too small: profit after fees and safety margin below the minimum"),
     ):
         if r.startswith(prefix):
             return label
