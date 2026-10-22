@@ -7,24 +7,48 @@ tokens:
 - name: TUS (testnet lab token)
   currency: TUS
   issuer: r93iwyqNYXszEbRAbCM7WLHTQj1fRDmAGr
-  approved: false
+  approved: true
   verdict: CAUTION
   review_summary:
   - Buying and immediately selling 100 XRP worth loses 88.91% - prices move a lot
     with size.
+  approved_on: '2026-10-22'
+  approved_note: 'Owner approved in chat on 2026-10-22: ''I approve TUS, TEU, TGB'''
+  approval_snapshot:
+    transfer_fee_pct: '0'
+    can_freeze: false
+    clawback: false
+    require_auth: false
+    issuer_locked: false
 - name: TEU (testnet lab token)
   currency: TEU
   issuer: r93iwyqNYXszEbRAbCM7WLHTQj1fRDmAGr
-  approved: false
+  approved: true
   verdict: CAUTION
   review_summary:
   - Buying and immediately selling 100 XRP worth loses 88.91% - prices move a lot
     with size.
+  approved_on: '2026-10-22'
+  approved_note: 'Owner approved in chat on 2026-10-22: ''I approve TUS, TEU, TGB'''
+  approval_snapshot:
+    transfer_fee_pct: '0'
+    can_freeze: false
+    clawback: false
+    require_auth: false
+    issuer_locked: false
 - name: TGB (testnet lab token)
   currency: TGB
   issuer: rL4c4udeKEHQRLvomLwK4gbb8ppexH9aAa
-  approved: false
+  approved: true
   verdict: CAUTION
   review_summary:
   - Buying and immediately selling 100 XRP worth loses 88.92% - prices move a lot
     with size.
+  approved_on: '2026-10-22'
+  approved_note: 'Owner approved in chat on 2026-10-22: ''I approve TUS, TEU, TGB'''
+  approval_snapshot:
+    transfer_fee_pct: '0.200'
+    can_freeze: true
+    clawback: false
+    require_auth: false
+    issuer_locked: false
