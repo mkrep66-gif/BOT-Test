@@ -1,0 +1,22 @@
+[Unit]
+Description=XRPL arbitrage - Testnet lab noise (knocks practice prices out of line)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=xrplarb
+Group=xrplarb
+WorkingDirectory=/opt/xrplarb
+# Testnet only: it trades the fake lab tokens from the lab market-maker wallet.
+ExecStart=/opt/xrplarb/.venv/bin/python -m xrplarb lab-noise --every 30
+Restart=always
+RestartSec=30
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/xrplarb/data /opt/xrplarb/secrets /opt/xrplarb/reports /opt/xrplarb/config
+PrivateTmp=true
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
