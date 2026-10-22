@@ -12,5 +12,18 @@
       "WebFetch(domain:s2.ripple.com)",
       "WebFetch(domain:api.telegram.org)"
     ]
+  },
+  "sandbox": {
+    "network": {
+      "allowedDomains": [
+        "s.altnet.rippletest.net",
+        "faucet.altnet.rippletest.net",
+        "testnet.xrpl-labs.com",
+        "xrplcluster.com",
+        "s1.ripple.com",
+        "s2.ripple.com",
+        "api.telegram.org"
+      ]
+    }
   }
 }
