@@ -126,3 +126,24 @@ def test_inner_results_reads_parent_batch_id_from_meta():
     ex = Executor(FakeNet(), FakeWallet())
     found = asyncio.run(ex._inner_results("BB", 5))
     assert [f["hash"] for f in found] == ["P1", "P2"]
+
+
+def test_working_client_skips_unreachable_server():
+    import asyncio
+
+    from xrpl.models.response import Response, ResponseStatus
+
+    from xrplarb.xrplnet import Net
+
+    class Down:
+        async def request(self, req):
+            raise ConnectionError("blocked port")
+
+    class Up:
+        async def request(self, req):
+            return Response(status=ResponseStatus.SUCCESS, result={"info": {}})
+
+    net = Net(["https://down:51234/", "https://up/"])
+    up = Up()
+    net.clients = [Down(), up]
+    assert asyncio.run(net.working_client()) is up

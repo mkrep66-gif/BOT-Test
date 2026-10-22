@@ -73,7 +73,7 @@ async def lab_setup(net: Net, pool_xrp: Decimal = Decimal(25)) -> List[str]:
     mm = load_wallet("testnet", "lab_mm")
     faucet = NETWORKS["testnet"]["faucet"]
     while await net.xrp_balance(mm.classic_address) < pool_xrp * 5 + 20:
-        await generate_faucet_wallet(net.client, wallet=mm, faucet_host=faucet, usage_context="xrplarb-lab")
+        await generate_faucet_wallet(await net.working_client(), wallet=mm, faucet_host=faucet, usage_context="xrplarb-lab")
 
     ia, ib = load_wallet("testnet", "lab_issuer_a"), load_wallet("testnet", "lab_issuer_b")
     for w in (ia, ib):

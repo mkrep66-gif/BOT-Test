@@ -53,12 +53,21 @@ class Net:
         self.urls = urls
         self.network = network
         self._idx = 0
+        self._probed = False
         self.clients = [AsyncJsonRpcClient(u) for u in urls]
         self.sem = asyncio.Semaphore(max_concurrency)
 
     @property
     def client(self) -> AsyncJsonRpcClient:
         return self.clients[self._idx]
+
+    async def working_client(self) -> AsyncJsonRpcClient:
+        """The client for a server that answers. Use this instead of `client`
+        when talking to xrpl-py helpers directly (they don't fail over)."""
+        if not self._probed:
+            await self.request(ServerInfo())  # rotates past unreachable servers
+            self._probed = True
+        return self.client
 
     def _rotate(self) -> None:
         self._idx = (self._idx + 1) % len(self.clients)

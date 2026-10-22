@@ -56,7 +56,7 @@ dust_sweep_min_xrp: 0.05
 # Where XRP above each bot's cap is moved to (your own wallet address).
 # Leave empty to never move funds automatically.
 vault_address:
-  testnet: ""
+  testnet: "rsWHDnMsRbvGHai1WfC7siJds6dAF1dJ44"
   mainnet: ""
 sweep_margin_xrp: 1
 

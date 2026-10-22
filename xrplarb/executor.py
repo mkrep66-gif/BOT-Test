@@ -164,15 +164,17 @@ class Executor:
         return self.wallet.classic_address
 
     async def last_ledger(self) -> int:
-        return await get_latest_validated_ledger_sequence(self.net.client) + self.LEDGER_WINDOW
+        client = await self.net.working_client()
+        return await get_latest_validated_ledger_sequence(client) + self.LEDGER_WINDOW
 
     async def submit_tx(self, tx) -> Dict[str, Any]:
         """Sign, submit, and wait until the outcome is final. Never raises for
         a failed transaction - returns its result code instead, so failures
         get logged like everything else."""
-        signed = await autofill_and_sign(tx, self.net.client, self.wallet)
+        client = await self.net.working_client()
+        signed = await autofill_and_sign(tx, client, self.wallet)
         tx_hash = signed.get_hash()
-        sub = await submit(signed, self.net.client)
+        sub = await submit(signed, client)
         prelim = sub.result.get("engine_result", "")
         base = {"hash": tx_hash, "tx_json": {"Fee": signed.fee}, "validated": False}
         if prelim[:3] in ("tem", "tef", "tel"):
@@ -181,10 +183,10 @@ class Executor:
         lls = signed.last_ledger_sequence or 0
         while True:
             await asyncio.sleep(1.0)
-            r = await self.net.client.request(Tx(transaction=tx_hash))
+            r = await client.request(Tx(transaction=tx_hash))
             if r.is_successful() and r.result.get("validated"):
                 return r.result
-            if await get_latest_validated_ledger_sequence(self.net.client) > lls:
+            if await get_latest_validated_ledger_sequence(client) > lls:
                 return {**base, "tx_json": {"Fee": "0"}, "meta": {"TransactionResult": f"expired({prelim})"}}
 
     async def _inner_results(self, batch_hash: str, ledger_index: int) -> List[Dict[str, Any]]:

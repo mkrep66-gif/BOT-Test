@@ -59,7 +59,7 @@ async def create_wallet(net: Net, network: str, name: str, mainnet_approved: boo
             )
         w = Wallet.create()  # generated offline; the owner must fund it
     else:
-        w = await generate_faucet_wallet(net.client, faucet_host=NETWORKS[network]["faucet"], usage_context="xrplarb")
+        w = await generate_faucet_wallet(await net.working_client(), faucet_host=NETWORKS[network]["faucet"], usage_context="xrplarb")
     secrets_store.add_wallet(network, name, w.classic_address, w.seed)
     log.info("created %s wallet %s: %s", network, name, w.classic_address)
     return w.classic_address
