@@ -1,0 +1,22 @@
+[Unit]
+Description=XRPL arbitrage - bots
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=xrplarb
+Group=xrplarb
+WorkingDirectory=/opt/xrplarb
+# Change --network to mainnet only after written approval (see docs/GOING_LIVE.md)
+ExecStart=/opt/xrplarb/.venv/bin/python -m xrplarb run --network testnet
+Restart=always
+RestartSec=10
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/xrplarb/data /opt/xrplarb/secrets /opt/xrplarb/reports /opt/xrplarb/config
+PrivateTmp=true
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

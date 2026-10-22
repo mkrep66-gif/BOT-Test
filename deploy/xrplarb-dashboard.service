@@ -1,0 +1,22 @@
+[Unit]
+Description=XRPL arbitrage - dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=xrplarb
+Group=xrplarb
+WorkingDirectory=/opt/xrplarb
+# Shows the network named here by default (testnet until you approve mainnet).
+ExecStart=/opt/xrplarb/.venv/bin/python -m xrplarb dashboard --network testnet
+Restart=always
+RestartSec=10
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/xrplarb/data /opt/xrplarb/secrets /opt/xrplarb/reports /opt/xrplarb/config
+PrivateTmp=true
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

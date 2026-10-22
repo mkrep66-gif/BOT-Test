@@ -1,0 +1,22 @@
+[Unit]
+Description=XRPL arbitrage - watch
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=xrplarb
+Group=xrplarb
+WorkingDirectory=/opt/xrplarb
+# Read-only: watches real mainnet markets, needs no keys, never trades.
+ExecStart=/opt/xrplarb/.venv/bin/python -m xrplarb watch --network mainnet
+Restart=always
+RestartSec=10
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/xrplarb/data /opt/xrplarb/secrets /opt/xrplarb/reports /opt/xrplarb/config
+PrivateTmp=true
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

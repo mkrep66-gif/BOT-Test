@@ -1,0 +1,12 @@
+# NEVER commit secrets or live data
+secrets/*
+!secrets/README.md
+data/
+*.db
+*.db-*
+exports/
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+*.enc

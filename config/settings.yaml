@@ -1,0 +1,76 @@
+# XRPL arbitrage bots - main settings (no secrets here; those live in secrets/secrets.yaml)
+#
+# Lines starting with # are comments. Change a value, save, restart the bots.
+
+# Which network to use: testnet (fake XRP) or mainnet (real money).
+network: testnet
+
+# Real-money trading is OFF until the owner approves in writing.
+# Watch-only mainnet scanning works with this left false.
+allow_mainnet_trading: false
+
+# How many bots (1-5). Each has its own wallet and its own group of routes.
+num_bots: 5
+
+# Max XRP each bot may trade with (your rule: never more than 100).
+# On mainnet we start at 20.
+working_balance_xrp: 100
+max_trade_xrp: 100
+min_trade_xrp: 1
+
+# Loop length: 3 to 5 hops, starting and ending in XRP.
+min_hops: 3
+max_hops: 5
+
+# A loop must make at least this much XRP after every cost, or we skip it.
+min_profit_xrp: 0.02
+
+# Safety margin for prices moving between "seen" and "traded" (0.0005 = 0.05%).
+# Every trade's minimum payout is set so that, if prices move more than this,
+# the all-or-nothing transaction cancels itself (cost: ~0.00004 XRP fee) rather
+# than losing money. So a small margin is the right choice: a bigger one only
+# throws away real gaps.
+slippage_buffer: 0.0005
+
+# Never pay more than this network fee for one trade (in drops; 1 XRP = 1,000,000 drops).
+max_network_fee_drops: 2000
+
+# How often to re-read the markets (a new ledger closes every ~3-4 seconds).
+scan_interval_seconds: 4
+book_depth: 30
+
+# Two-step (non-atomic) mode: only used if the ledger's all-or-nothing Batch
+# feature isn't available. OFF until you've read the risk explanation and agreed.
+allow_non_atomic: false
+
+# Daily loss cap per bot (0.10 = 10%; cannot be set higher).
+daily_loss_limit_pct: 0.10
+
+# Kill switch / recovery: accept selling tokens back to XRP up to this much
+# below the current price if that's what it takes to get out.
+kill_max_slippage: 0.25
+
+# Leftover tokens worth more than this (in XRP) get sold back automatically.
+dust_sweep_min_xrp: 0.05
+
+# Where XRP above each bot's cap is moved to (your own wallet address).
+# Leave empty to never move funds automatically.
+vault_address:
+  testnet: ""
+  mainnet: ""
+sweep_margin_xrp: 1
+
+# Name(s) of the ledger feature that provides all-or-nothing transactions.
+batch_amendment_names: ["Batch"]
+
+# Dashboard: 127.0.0.1 = only reachable on the server itself (use Tailscale
+# or the HTTPS proxy from docs/GOING_LIVE.md to reach it from your phone).
+dashboard_host: 127.0.0.1
+dashboard_port: 8080
+
+# Watch-only mode: assume trades up to this size when estimating profit.
+watch_max_size_xrp: 100
+
+# Optional: your own ledger servers, per network.
+# rpc_urls:
+#   mainnet: ["https://xrplcluster.com/"]
