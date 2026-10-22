@@ -20,7 +20,9 @@ REPORTS_DIR = Path(os.environ.get("XRPLARB_REPORTS_DIR", ROOT / "reports"))
 
 NETWORKS = {
     "testnet": {
-        "rpc": ["https://s.altnet.rippletest.net:51234/"],
+        # Ripple's servers use port 51234; xrpl-labs is on the standard port 443
+        # (helps when a firewall only allows normal HTTPS).
+        "rpc": ["https://s.altnet.rippletest.net:51234/", "https://testnet.xrpl-labs.com/"],
         "faucet": "faucet.altnet.rippletest.net",
         "explorer": "https://testnet.xrpl.org/transactions/",
     },

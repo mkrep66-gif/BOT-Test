@@ -10,7 +10,9 @@ The environment I'm building in can't reach the XRP Ledger. Two options:
 - **A. Allow it here (free, quickest for Testnet):** in this cloud
   environment's settings → Network access, add these hosts:
   `s.altnet.rippletest.net`, `faucet.altnet.rippletest.net`, `xrplcluster.com`,
-  `s1.ripple.com`, `s2.ripple.com` (and `api.telegram.org` for Telegram alerts).
+  `s1.ripple.com`, `s2.ripple.com`, `testnet.xrpl-labs.com` (and `api.telegram.org` for Telegram alerts).
+  Ripple's servers use port 51234, so if your setting allows ports, allow that one too.
+  Network changes generally apply to a **new** session.
   Caveat: this environment shuts down when idle, so it's fine for Testnet tests
   but **not** for the week-long mainnet watch.
 - **B. Rent the small server now** (~$5–7/month, details and costs in
