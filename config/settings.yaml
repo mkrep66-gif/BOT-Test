@@ -61,7 +61,8 @@ vault_address:
 sweep_margin_xrp: 1
 
 # Name(s) of the ledger feature that provides all-or-nothing transactions.
-batch_amendment_names: ["Batch"]
+# The original "Batch" amendment was replaced by "BatchV1_1"; don't list the old one.
+batch_amendment_names: ["BatchV1_1"]
 
 # Dashboard: 127.0.0.1 = only reachable on the server itself (use Tailscale
 # or the HTTPS proxy from docs/GOING_LIVE.md to reach it from your phone).

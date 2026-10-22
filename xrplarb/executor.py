@@ -194,8 +194,11 @@ class Executor:
         found = []
         for entry in r.get("transactions", []):
             tx = _tx_fields(entry)
-            if str(tx.get("ParentBatchID", "")).upper() == batch_hash.upper():
-                found.append({"hash": entry.get("hash") or tx.get("hash"), "tx": tx, "meta": entry.get("meta", {})})
+            meta = entry.get("meta", {})
+            # rippled reports ParentBatchID in the metadata, not the tx fields
+            parent = meta.get("ParentBatchID") or tx.get("ParentBatchID", "")
+            if str(parent).upper() == batch_hash.upper():
+                found.append({"hash": entry.get("hash") or tx.get("hash"), "tx": tx, "meta": meta})
         return found
 
     # ---- atomic ----------------------------------------------------------

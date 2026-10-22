@@ -98,3 +98,31 @@ def test_legs_from_meta_sent_and_received_excluding_fee():
     l = legs[0]
     assert l.sent_asset == "XRP" and l.sent_amount == D(10)
     assert l.received_asset == f"EUR.{ISS_B}" and l.received_amount == D("4.5")
+
+
+def test_inner_results_reads_parent_batch_id_from_meta():
+    # Shape returned by a live Testnet server (api_version 1): ParentBatchID is in meta.
+    import asyncio
+
+    from xrplarb.executor import Executor
+
+    class FakeNet:
+        async def request(self, req):
+            return {
+                "transactions": [
+                    {"tx": {"TransactionType": "Batch", "hash": "BB"}, "meta": {"TransactionResult": "tesSUCCESS"}},
+                    {"tx": {"TransactionType": "Payment", "hash": "P1"},
+                     "meta": {"TransactionResult": "tesSUCCESS", "ParentBatchID": "bb"}},
+                    {"tx": {"TransactionType": "Payment", "hash": "P2"},
+                     "meta": {"TransactionResult": "tesSUCCESS", "ParentBatchID": "BB"}},
+                    {"tx": {"TransactionType": "Payment", "hash": "X"},
+                     "meta": {"TransactionResult": "tesSUCCESS", "ParentBatchID": "OTHER"}},
+                ]
+            }
+
+    class FakeWallet:
+        classic_address = ME
+
+    ex = Executor(FakeNet(), FakeWallet())
+    found = asyncio.run(ex._inner_results("BB", 5))
+    assert [f["hash"] for f in found] == ["P1", "P2"]

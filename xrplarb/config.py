@@ -65,7 +65,7 @@ class Settings:
     dust_sweep_min_xrp: Decimal = D("0.05")
     vault_address: Optional[str] = None
     sweep_margin_xrp: Decimal = D(1)
-    batch_amendment_names: List[str] = field(default_factory=lambda: ["Batch"])
+    batch_amendment_names: List[str] = field(default_factory=lambda: ["BatchV1_1"])
     dashboard_host: str = "127.0.0.1"
     dashboard_port: int = 8080
     watch_min_profit_xrp: Decimal = D("0.0")
