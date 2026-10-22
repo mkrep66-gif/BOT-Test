@@ -1,5 +1,16 @@
 {
   "env": {
     "API_KEY": "XRPL"
+  },
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:s.altnet.rippletest.net)",
+      "WebFetch(domain:faucet.altnet.rippletest.net)",
+      "WebFetch(domain:testnet.xrpl-labs.com)",
+      "WebFetch(domain:xrplcluster.com)",
+      "WebFetch(domain:s1.ripple.com)",
+      "WebFetch(domain:s2.ripple.com)",
+      "WebFetch(domain:api.telegram.org)"
+    ]
   }
 }
