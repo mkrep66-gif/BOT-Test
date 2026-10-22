@@ -39,6 +39,28 @@ max_network_fee_drops: 2000
 scan_interval_seconds: 4
 book_depth: 30
 
+# Never trade on prices older than this many seconds (counted from when the
+# ledger they come from closed). 60 is the maximum allowed.
+max_price_age_seconds: 60
+
+# Be gentle with public servers: requests to each server are spaced out
+# evenly at this rate, and a server that says it's busy is left alone for a
+# while (2 s, 4 s, 8 s ... up to 2 min).
+requests_per_second_per_server: 8
+
+# After a trade on a route fails or is cancelled, wait this long before trying
+# that route again (doubles on each further failure, up to 30 minutes).
+route_retry_cooldown_seconds: 30
+
+# The bots never leave standing orders on the ledger. Any order found in a bot
+# wallet older than this (or past its expiry) is cancelled automatically.
+stray_offer_max_age_seconds: 120
+
+# Your time zone for "Profit today", the daily history and the daily loss cap
+# (which all reset at your local midnight). Use a name like "Europe/London" or
+# "America/New_York". Empty = this computer's own time zone.
+timezone: ""
+
 # Two-step (non-atomic) mode: only used if the ledger's all-or-nothing Batch
 # feature isn't available. OFF until you've read the risk explanation and agreed.
 allow_non_atomic: false

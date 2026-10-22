@@ -7,7 +7,8 @@ from decimal import Decimal
 from typing import Dict, Optional, Tuple
 
 from .amounts import ZERO, Asset
-from .db import DB, today_utc
+from .db import DB
+from .localtime import day_start_utc, today_local
 from .market import MarketSnapshot, liquidation_value
 
 
@@ -33,15 +34,16 @@ def value_holdings(xrp: Decimal, tokens: Dict[Asset, Decimal], snap: MarketSnaps
 def daily_loss(
     db: DB, network: str, bot: str, current_total: Decimal, day: Optional[str] = None
 ) -> Tuple[Decimal, Decimal, Optional[Decimal]]:
-    """Returns (loss_xrp, loss_fraction, start_value) for today (UTC).
+    """Returns (loss_xrp, loss_fraction, start_value) for today (since your
+    local midnight).
 
     Money you moved in or out (deposits, sweeps to your vault) is not counted
     as profit or loss."""
-    day = day or today_utc()
+    day = day or today_local()
     start, start_ts = db.day_start_value(network, bot, day)
     if start is None or start <= 0:
         return ZERO, ZERO, start
-    transfers = db.net_transfers_since(network, bot, max(start_ts, day + "T00:00:00"))
+    transfers = db.net_transfers_since(network, bot, max(start_ts, day_start_utc(day)))
     loss = start + transfers - current_total
     return loss, loss / start, start
 

@@ -22,7 +22,12 @@ NETWORKS = {
     "testnet": {
         # Ripple's servers use port 51234; xrpl-labs is on the standard port 443
         # (helps when a firewall only allows normal HTTPS).
-        "rpc": ["https://s.altnet.rippletest.net:51234/", "https://testnet.xrpl-labs.com/"],
+        # Price reads are spread across all of these.
+        "rpc": [
+            "https://s.altnet.rippletest.net:51234/",
+            "https://testnet.xrpl-labs.com/",
+            "https://clio.altnet.rippletest.net:51234/",
+        ],
         "faucet": "faucet.altnet.rippletest.net",
         "explorer": "https://testnet.xrpl.org/transactions/",
     },
@@ -70,6 +75,11 @@ class Settings:
     dashboard_port: int = 8080
     watch_min_profit_xrp: Decimal = D("0.0")
     watch_max_size_xrp: Decimal = D(100)
+    requests_per_second_per_server: float = 8.0
+    max_price_age_seconds: float = 60.0
+    route_retry_cooldown_seconds: float = 30.0
+    stray_offer_max_age_seconds: float = 120.0
+    timezone: str = ""
     raw: Dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -112,6 +122,11 @@ def load_settings(path: Optional[Path] = None, network_override: Optional[str] =
         "dashboard_port": int,
         "watch_min_profit_xrp": D,
         "watch_max_size_xrp": D,
+        "requests_per_second_per_server": float,
+        "max_price_age_seconds": float,
+        "route_retry_cooldown_seconds": float,
+        "stray_offer_max_age_seconds": float,
+        "timezone": str,
     }
     for k, conv in simple.items():
         if k in raw and raw[k] is not None:
@@ -131,6 +146,17 @@ def load_settings(path: Optional[Path] = None, network_override: Optional[str] =
         raise ValueError("hops must satisfy 3 <= min_hops <= max_hops <= 5")
     if s.daily_loss_limit_pct > D("0.10"):
         raise ValueError("daily_loss_limit_pct may not exceed 10% (your rule)")
+    if not 0 < s.max_price_age_seconds <= 60:
+        raise ValueError("max_price_age_seconds must be between 0 and 60 (your rule: never trade on prices older than 60 s)")
+    if not 0 < s.requests_per_second_per_server <= 20:
+        raise ValueError("requests_per_second_per_server must be between 0 and 20 (be kind to public servers)")
+    if s.timezone:
+        from zoneinfo import ZoneInfo
+
+        ZoneInfo(s.timezone)  # raises if the name is wrong
+    from .localtime import set_timezone
+
+    set_timezone(s.timezone)
     return s
 
 
@@ -143,6 +169,49 @@ class ApprovedToken:
     snapshot: Dict[str, Any]
 
 
+# ---- block list -------------------------------------------------------------
+# config/blocked_tokens.yaml: tokens (or whole issuers) that must never be
+# traded, on any network, whatever their approval says.
+
+def blocklist_path() -> Path:
+    return CONFIG_DIR / "blocked_tokens.yaml"
+
+
+def load_blocklist() -> List[Dict[str, Any]]:
+    p = blocklist_path()
+    if not p.exists():
+        return []
+    raw = yaml.safe_load(p.read_text()) or {}
+    return [e for e in (raw.get("blocked") or []) if isinstance(e, dict) and (e.get("token") or e.get("issuer"))]
+
+
+def save_blocklist(entries: List[Dict[str, Any]]) -> None:
+    header = (
+        "# Tokens the bots must NEVER trade, on any network - even if approved.\n"
+        "# Add one with:   python -m xrplarb tokens-block CURRENCY.ISSUER --reason \"...\"\n"
+        "# or block every token from an issuer:   python -m xrplarb tokens-block rISSUER\n"
+        "# Running bots pick up changes within a few seconds.\n"
+    )
+    blocklist_path().write_text(header + yaml.safe_dump({"blocked": entries}, sort_keys=False))
+
+
+def blocked_reason(asset: Asset, entries: Optional[List[Dict[str, Any]]] = None) -> Optional[str]:
+    """Why this token is blocked, or None. Matches CURRENCY.ISSUER (the
+    currency as stored or as its readable symbol) or a blocked issuer."""
+    if asset.is_xrp:
+        return None
+    for e in load_blocklist() if entries is None else entries:
+        reason = e.get("reason") or "on your block list"
+        if e.get("issuer") and e["issuer"] == asset.issuer:
+            return reason
+        tok = str(e.get("token") or "")
+        if "." in tok:
+            cur, iss = tok.split(".", 1)
+            if iss == asset.issuer and cur in (asset.currency, asset.symbol):
+                return reason
+    return None
+
+
 def tokens_path(network: str) -> Path:
     return CONFIG_DIR / f"approved_tokens.{network}.yaml"
 
@@ -153,7 +222,10 @@ def load_tokens(network: str, only_approved: bool = True) -> List[ApprovedToken]
         return []
     raw = yaml.safe_load(p.read_text()) or {}
     out = []
+    blocked = load_blocklist()
     for t in raw.get("tokens", []) or []:
+        if blocked_reason(Asset(t["currency"], t["issuer"]), blocked):
+            continue
         tok = ApprovedToken(
             asset=Asset(t["currency"], t["issuer"]),
             name=t.get("name", t["currency"]),

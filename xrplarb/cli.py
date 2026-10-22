@@ -17,12 +17,16 @@ from . import secrets_store
 from .config import (
     DATA_DIR,
     REPORTS_DIR,
+    blocked_reason,
+    load_blocklist,
     load_settings,
     load_token_entries,
+    save_blocklist,
     save_token_pairs,
     save_tokens,
 )
-from .db import DB, today_utc
+from .db import DB
+from .localtime import today_local
 from .redact import register_secrets, setup_logging
 
 
@@ -33,7 +37,7 @@ def _settings(args):
 def _net(s):
     from .xrplnet import Net
 
-    return Net(s.rpc_urls, network=s.network)
+    return Net(s.rpc_urls, network=s.network, rate_per_server=s.requests_per_second_per_server)
 
 
 def cmd_init(args):
@@ -106,6 +110,8 @@ def cmd_discover(args):
 
     tokens, pairs = asyncio.run(go())
     existing = {(e["currency"], e["issuer"]): e for e in load_token_entries(s.network)}
+    blocked = load_blocklist()
+    tokens = [t for t in tokens if not blocked_reason(t, blocked)]
     for t in tokens:
         existing.setdefault((t.currency, t.issuer), {"name": t.symbol, "currency": t.currency, "issuer": t.issuer, "approved": False})
     save_tokens(s.network, list(existing.values()))
@@ -145,6 +151,8 @@ def cmd_tokens_approve(args, approve=True):
     s = _settings(args)
     entries = load_token_entries(s.network)
     target = Asset.from_key(args.token)
+    if approve and (why := blocked_reason(target)):
+        sys.exit(f"{target.key} is on your block list ({why}). Remove it with tokens-unblock first if you really mean it.")
     for e in entries:
         if e["currency"] == target.currency and e["issuer"] == target.issuer:
             if approve:
@@ -154,7 +162,7 @@ def cmd_tokens_approve(args, approve=True):
                 r = TokenReport(asset=target)
                 assess_issuer(r, info)
                 e["approved"] = True
-                e["approved_on"] = today_utc()
+                e["approved_on"] = today_local()
                 e["approved_note"] = args.note or ""
                 e["approval_snapshot"] = r.snapshot()
             else:
@@ -164,6 +172,32 @@ def cmd_tokens_approve(args, approve=True):
             print(("Approved " if approve else "Revoked ") + target.key)
             return
     sys.exit("Token not found in the list.")
+
+
+def cmd_tokens_block(args, block=True):
+    target = args.target.strip()
+    if "." not in target and not target.startswith("r"):
+        sys.exit("Give CURRENCY.ISSUER (one token) or an issuer address starting with r (all its tokens).")
+    key = "token" if "." in target else "issuer"
+    entries = [e for e in load_blocklist() if e.get(key) != target]
+    if block:
+        entries.append({key: target, "reason": args.reason or "blocked by owner", "blocked_on": today_local()})
+        save_blocklist(entries)
+        print(f"Blocked {target}. It will never be traded; running bots drop it within seconds.")
+    else:
+        if len(entries) == len(load_blocklist()):
+            sys.exit(f"{target} is not on the block list.")
+        save_blocklist(entries)
+        print(f"Removed {target} from the block list. (It still needs approval before it is traded.)")
+
+
+def cmd_tokens_blocked(args):
+    entries = load_blocklist()
+    if not entries:
+        print("Block list is empty.")
+    for e in entries:
+        what = e.get("token") or f"every token from {e.get('issuer')}"
+        print(f"  {what}  - {e.get('reason', '')} (since {e.get('blocked_on', '?')})")
 
 
 def cmd_trustlines(args):
@@ -316,6 +350,47 @@ def cmd_lab_noise(args):
     asyncio.run(lab_noise(_net(s), every_s=args.every, rounds=args.rounds))
 
 
+def cmd_profit_history(args):
+    from .history import daily_history
+    from .localtime import tz_label
+
+    s = _settings(args)
+    rows = daily_history(DB(), s.network, days=args.days)
+    print(f"Daily results on {s.network}, your local time ({tz_label()}):")
+    print(f"  {'day':10}  {'trades':>6}  {'win rate':>8}  {'no-fills':>8}  {'trade profit':>14}  {'wallet change':>14}")
+    for d in rows:
+        wr = f"{d.win_rate:.0f}%" if d.win_rate is not None else "-"
+        wc = f"{d.wallet_change:+.6f}" if d.wallet_change is not None else "-"
+        print(f"  {d.day:10}  {d.attempts:>6}  {wr:>8}  {d.no_fills:>8}  {d.trade_profit:>+14.6f}  {wc:>14}")
+    if not rows:
+        print("  (no activity yet)")
+
+
+def cmd_weekly_review(args):
+    from .history import review_markdown, weekly_review
+
+    s = _settings(args)
+    rv = weekly_review(DB(), s.network, days=args.days)
+    text = review_markdown(rv)
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    p = REPORTS_DIR / f"weekly_review_{s.network}_{rv.last_day}.md"
+    p.write_text(text)
+    print(text)
+    print(f"(saved to {p})")
+
+
+def cmd_security_check(args):
+    from .security import run_checks
+
+    results = run_checks()
+    for ok, msg in results:
+        print(("  PASS  " if ok else "  FAIL  ") + msg)
+    if all(ok for ok, _ in results):
+        print("All security checks passed.")
+    else:
+        sys.exit("Some checks FAILED - see above. Don't run the bots until they pass.")
+
+
 def cmd_check_network(args):
     s = _settings(args)
     net = _net(s)
@@ -362,6 +437,12 @@ def main(argv=None):
     sp.add_argument("--override", action="store_true")
     sp = add("tokens-revoke", lambda a: cmd_tokens_approve(a, approve=False), "stop using a token")
     sp.add_argument("token")
+    sp = add("tokens-block", cmd_tokens_block, "never trade a token (CURRENCY.ISSUER) or any token of an issuer (rADDRESS)")
+    sp.add_argument("target")
+    sp.add_argument("--reason", default="")
+    sp = add("tokens-unblock", lambda a: cmd_tokens_block(a, block=False), "remove an entry from the block list")
+    sp.add_argument("target")
+    add("tokens-blocked", cmd_tokens_blocked, "show the block list")
     add("trustlines", cmd_trustlines, "open trust lines for approved tokens in every bot wallet")
     add("run", cmd_run, "start the trading bots")
     sp = add("watch", cmd_watch, "watch-only scanner (no keys, no trades)")
@@ -370,6 +451,10 @@ def main(argv=None):
     sp = add("dashboard", cmd_dashboard, "start the phone dashboard")
     sp.add_argument("--host")
     sp.add_argument("--port", type=int)
+    sp = add("profit-history", cmd_profit_history, "day-by-day results in your local time")
+    sp.add_argument("--days", type=int, default=14)
+    sp = add("weekly-review", cmd_weekly_review, "plain-English review of the past week (win rate, profit, no-fills, problems)")
+    sp.add_argument("--days", type=int, default=7)
     add("kill", cmd_kill, "KILL SWITCH: stop all bots, convert everything to XRP")
     add("resume", cmd_resume, "release the kill switch / loss-cap stops")
     sp = add("export", cmd_export, "export logs to Excel + CSV")
@@ -379,6 +464,7 @@ def main(argv=None):
     sp = add("restore-secrets", cmd_restore, "restore the private settings from an encrypted backup")
     sp.add_argument("file")
     add("secrets-show", cmd_secrets_show, "show what's stored (names/addresses only)")
+    add("security-check", cmd_security_check, "check keys are stored safely and never leaked into logs/git")
     add("alerts-test", cmd_alerts_test, "send a test alert")
     sp = add("alerts-setup", cmd_alerts_setup, "set up Telegram / email / server-died watchdog alerts")
     sp.add_argument("kind", choices=["telegram", "email", "watchdog"])

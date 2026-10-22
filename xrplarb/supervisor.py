@@ -20,7 +20,7 @@ from typing import Dict, List, Optional
 from . import secrets_store
 from .alerts import Alerter
 from .bot import Bot, MarketLocks
-from .config import Settings, load_token_pairs, load_tokens
+from .config import Settings, blocked_reason, blocklist_path, load_blocklist, load_token_pairs, load_tokens
 from .db import DB
 from .market import MarketFeed, MarketSnapshot
 from .redact import register_secrets
@@ -33,13 +33,15 @@ log = logging.getLogger(__name__)
 
 MAX_CRASHES_PER_HOUR = 3
 TOKEN_RECHECK_SECONDS = 300
+NET_HEALTH_LOG_SECONDS = 3600
+BLOCKED_TAG = "on your block list"
 
 
 class Supervisor:
     def __init__(self, settings: Settings, db: Optional[DB] = None):
         self.s = settings
         self.db = db or DB()
-        self.net = Net(settings.rpc_urls, network=settings.network)
+        self.net = Net(settings.rpc_urls, network=settings.network, rate_per_server=settings.requests_per_second_per_server)
         self.alerter = Alerter(settings.network, self.db)
         self.feed = MarketFeed(self.net, depth=settings.book_depth)
         self.locks = MarketLocks()
@@ -51,6 +53,7 @@ class Supervisor:
         self._killed_handled = False
         self._crashes: Dict[str, List[float]] = {}
         self._disabled_tokens: Dict[str, str] = {}
+        self._blocklist_mtime: Optional[float] = None
 
     # ---- startup -------------------------------------------------------------
     async def setup(self) -> None:
@@ -61,6 +64,13 @@ class Supervisor:
             )
         register_secrets(secrets_store.all_seeds())
         register_secrets([self.alerter.tg_token or "", (self.alerter.email or {}).get("password", "")])
+        from .security import run_checks
+
+        failed = [m for ok, m in run_checks() if not ok]
+        if failed:
+            msg = "Security check failed: " + "; ".join(failed)
+            self.db.event(s.network, "system", "ERROR", "security", msg)
+            raise SystemExit(msg + "\nRun `python -m xrplarb security-check` for details.")
 
         approved = load_tokens(s.network, only_approved=True)
         if not approved:
@@ -110,6 +120,32 @@ class Supervisor:
             await self.alerter.send("Bots restarted after an unexpected stop", "Check the dashboard events list.", force=True)
         self.db.set_flag("clean_shutdown", "0")
 
+    async def apply_blocklist(self) -> None:
+        """Pick up edits to config/blocked_tokens.yaml while running."""
+        p = blocklist_path()
+        mtime = p.stat().st_mtime if p.exists() else 0.0
+        if mtime == self._blocklist_mtime:
+            return
+        first = self._blocklist_mtime is None
+        self._blocklist_mtime = mtime
+        entries = load_blocklist()
+        changed = False
+        for t in self.tokens:
+            why = blocked_reason(t, entries)
+            current = self._disabled_tokens.get(t.key, "")
+            if why and not current.startswith(BLOCKED_TAG):
+                self._disabled_tokens[t.key] = f"{BLOCKED_TAG}: {why}"
+                changed = True
+                if not first:
+                    self.db.event(self.s.network, "system", "WARN", "blocked", f"stopped trading {t.short}: {why}")
+                    await self.alerter.send(f"Stopped trading {t.short}", f"Added to your block list: {why}", force=True)
+            elif not why and current.startswith(BLOCKED_TAG):
+                del self._disabled_tokens[t.key]
+                changed = True
+                self.db.event(self.s.network, "system", "INFO", "unblocked", f"{t.short} removed from the block list")
+        if changed and self.feed.latest:
+            self.rebuild_routes(self.feed.latest)
+
     def rebuild_routes(self, snap: MarketSnapshot) -> None:
         active = [t for t in self.tokens if t.key not in self._disabled_tokens]
         aset = set(active)
@@ -122,11 +158,16 @@ class Supervisor:
     async def market_loop(self) -> None:
         last_routes = 0.0
         last_house = 0.0
+        last_health = time.time()
         while not self._stop.is_set():
             t0 = time.time()
             if self.db.get_flag("kill") == "1":
                 await asyncio.sleep(1)
                 continue
+            await self.apply_blocklist()
+            if time.time() - last_health > NET_HEALTH_LOG_SECONDS:
+                last_health = time.time()
+                self.log_net_health()
             try:
                 active = [t for t in self.tokens if t.key not in self._disabled_tokens]
                 snap = await self.feed.snapshot(active, self.token_pairs, exclude_owner=None)
@@ -147,6 +188,15 @@ class Supervisor:
                     if not b.busy and not self._bot_dead(b):
                         asyncio.create_task(self._housekeeping(b, snap))
             await asyncio.sleep(max(0.2, self.s.scan_interval_seconds - (time.time() - t0)))
+
+    def log_net_health(self) -> None:
+        """Hourly line per server for the weekly review: requests, failures and
+        times we backed off because it was busy, during the past hour."""
+        for h in self.net.health(reset=True):
+            self.db.event(
+                self.s.network, "system", "INFO", "net-health",
+                f"{h['url']} requests={h['requests']} failures={h['failures']} backoffs={h['backoffs']}",
+            )
 
     def _bot_dead(self, b: Bot) -> bool:
         return self.db.get_flag(f"dead:{b.name}") == "1"
@@ -176,6 +226,7 @@ class Supervisor:
         b.busy = True
         try:
             await b.refresh_balances()
+            await b.cancel_stray_offers(snap)
             if not b.halted():
                 await b.sweep_dust(snap)
                 await b.maybe_sweep(snap)
@@ -253,7 +304,7 @@ class Supervisor:
                     )
                     if self.feed.latest:
                         self.rebuild_routes(self.feed.latest)
-                elif not worse and t.key in self._disabled_tokens:
+                elif not worse and t.key in self._disabled_tokens and not self._disabled_tokens[t.key].startswith(BLOCKED_TAG):
                     del self._disabled_tokens[t.key]
 
     async def deadman_loop(self) -> None:

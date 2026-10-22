@@ -54,12 +54,18 @@ and agreed to the two-step fallback.
 | Testnet only until you say so in writing | `allow_mainnet_trading: false` in settings; the bots refuse to start on mainnet. Mainnet wallets can't be created without a special flag. |
 | Max 100 XRP per bot | Hard limit in the code. Settings above 100 are rejected. Extra XRP is moved to your own "vault" address if you set one. |
 | Only approved tokens | Bots only trade tokens marked `approved: true`, which I only set after you confirm. Tokens the review marks NOT RECOMMENDED need an extra override. |
+| Block list | `config/blocked_tokens.yaml` (or `python -m xrplarb tokens-block CURRENCY.ISSUER`, or `tokens-block rISSUER` for all of an issuer's tokens). A blocked token is never traded on any network, even if approved; it can't be approved while blocked, and running bots drop it within seconds. |
+| Never trade on stale prices | Prices are timed from when their ledger closed. Older than 60 seconds → no trade (checked when choosing a trade and again just before sending). 60 is the maximum the settings allow. |
 | Re-check tokens | Every 5 minutes each issuer is re-checked; if a fee goes up or freeze/clawback appears, that token is dropped instantly and you get an alert. |
 | 10%/day loss cap | Wallet valued every 30 s with tokens priced at **what they'd actually sell for right now**. Over 10% down → bot stops, sells tokens back to XRP, alerts you, stays off until you press Resume. |
 | Kill switch from phone | Big red button on the dashboard (type STOP), or Telegram `/kill <PIN>`. Stops every bot and converts everything to XRP. |
 | Log everything | Every trade, fee, win, loss and every gap seen-but-missed **with the reason**. |
 | Spreadsheet for taxes | Dashboard → "Download Excel", or `python -m xrplarb export`. Includes a tax tab in the layout most crypto tax tools import. |
-| Secrets never shown | Keys live only in `secrets/secrets.yaml` (owner-only permissions). Every log line, alert and dashboard page is filtered for anything key-shaped. |
+| Secrets never shown | Keys live only in `secrets/secrets.yaml` (owner-only permissions). Every log line (including error tracebacks), alert and dashboard page is filtered for anything key-shaped; log files are owner-only. `python -m xrplarb security-check` confirms all of this and that no key is in git or any log; the bots refuse to start if it fails. |
+| Gentle on public servers | Requests to each server are evenly spaced (8 a second by default, no bursts), price reads are spread across all configured servers over kept-alive connections, and a server that says it's busy or stops answering is left alone for 2 s, 4 s, 8 s … up to 2 minutes. |
+| Failed routes and stuck orders | A route whose trade fails waits 30 s before being tried again, doubling each time it fails (max 30 min). Transactions that never confirm are given up after 90 s. The bots never leave standing orders; any order found in a bot wallet is cancelled once it has expired or sat there 2 minutes. |
+| Your local time | "Profit today", the daily history and the 10%/day loss cap all reset at **your** midnight (`timezone:` in settings; empty = this computer's). Dashboard → "Daily profit", or `python -m xrplarb profit-history`. |
+| Weekly review | `python -m xrplarb weekly-review`: win rate, profit, no-fills and why, everything that broke, server trouble, and suggested tuning, in plain English (saved under `reports/`). |
 
 ## Honest expectations
 
@@ -97,11 +103,14 @@ I've kept 5 (free) so you can see them working side by side.
 
 ## What's blocking right now
 
-This build environment's network blocks the XRP Ledger servers
-(`s.altnet.rippletest.net`, `faucet.altnet.rippletest.net`, `xrplcluster.com`,
-`s1.ripple.com`, `s2.ripple.com`), so I couldn't create Testnet wallets or scan
-yet. Either allow those hosts in this environment's network settings, or run it
-on a small server or your own computer. Steps are in [docs/RUNBOOK.md](docs/RUNBOOK.md).
+Testnet works from the build environment through `testnet.xrpl-labs.com`
+(port 443); Ripple's own servers on port 51234 are blocked there. Wallets and
+practice tokens are set up. Two things are needed before the bots trade:
+
+1. Your written approval of the practice tokens (see `reports/token_review_testnet.md`).
+2. A machine that stays on for the 1–2 week Testnet run. The build environment
+   shuts down when idle, so it can't run the bots unattended. Use your own
+   computer or a small server (costs in [docs/GOING_LIVE.md](docs/GOING_LIVE.md); needs your OK).
 
 ## Documents
 
@@ -116,4 +125,6 @@ on a small server or your own computer. Steps are in [docs/RUNBOOK.md](docs/RUNB
 Python 3.11+, `pip install -r requirements.txt`, `python -m pytest`.
 Package layout: `xrplarb/quote.py` (pool/book math), `routes.py`, `scanner.py`,
 `executor.py` (Batch building/submission), `bot.py`, `supervisor.py`, `risk.py`,
-`watch.py`, `dashboard.py`, `export.py`, `tokens.py`, `secrets_store.py`.
+`watch.py`, `dashboard.py`, `export.py`, `tokens.py`, `secrets_store.py`,
+`xrplnet.py` (pacing, failover, keep-alive), `history.py` (daily history, weekly
+review), `localtime.py`, `security.py`.

@@ -166,27 +166,31 @@ class DB:
 
     # ---- readers used by risk + dashboard ----------------------------------
     def day_start_value(self, network: str, bot: str, day: str) -> tuple[Optional[Decimal], Optional[str]]:
-        """Value at the start of the UTC day: the last snapshot before midnight,
-        or (for a bot that started today) the first one after. Returns (value, ts)."""
+        """Value at the start of `day` (your local midnight): the last snapshot
+        before midnight, or (for a bot that started that day) the first one
+        after. Returns (value, ts)."""
+        from .localtime import day_start_utc
+
+        start = day_start_utc(day)
         rows = self.query(
             "SELECT total_value_xrp, ts FROM balances WHERE network=? AND bot=? AND ts<? ORDER BY ts DESC LIMIT 1",
-            (network, bot, day + "T00:00:00"),
+            (network, bot, start),
         )
         if not rows:
             rows = self.query(
                 "SELECT total_value_xrp, ts FROM balances WHERE network=? AND bot=? AND ts>=? ORDER BY ts ASC LIMIT 1",
-                (network, bot, day + "T00:00:00"),
+                (network, bot, start),
             )
         if not rows:
             return None, None
         return Decimal(rows[0]["total_value_xrp"]), rows[0]["ts"]
 
-    def net_transfers_since(self, network: str, bot: str, since_iso: str) -> Decimal:
+    def net_transfers_since(self, network: str, bot: str, since_iso: str, until_iso: str = "9999") -> Decimal:
         """Deposits minus withdrawals (sweeps to your vault are not losses)."""
         total = Decimal(0)
         for r in self.query(
-            "SELECT direction, amount_xrp FROM transfers WHERE network=? AND bot=? AND ts>=?",
-            (network, bot, since_iso),
+            "SELECT direction, amount_xrp FROM transfers WHERE network=? AND bot=? AND ts>=? AND ts<?",
+            (network, bot, since_iso, until_iso),
         ):
             amt = Decimal(r["amount_xrp"])
             total += amt if r["direction"] == "in" else -amt

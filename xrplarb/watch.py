@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set
 
 from .amounts import ZERO, Asset
-from .config import REPORTS_DIR, Settings, load_token_entries, load_token_pairs
+from .config import REPORTS_DIR, Settings, blocked_reason, load_blocklist, load_token_entries, load_token_pairs
 from .db import DB, now_iso
 from .market import MarketFeed
 from .routes import Route, build_routes
@@ -38,8 +38,11 @@ def _candidate_tokens(network: str) -> tuple[List[Asset], Set[str]]:
     """All tokens on the list (approved or not), plus the set whose review
     verdict wasn't 'NOT RECOMMENDED' - so the report can say what's realistic."""
     tokens, safe = [], set()
+    blocked = load_blocklist()
     for t in load_token_entries(network):
         a = Asset(t["currency"], t["issuer"])
+        if blocked_reason(a, blocked):
+            continue
         tokens.append(a)
         if t.get("verdict") != "NOT RECOMMENDED":
             safe.add(a.key)
@@ -48,7 +51,10 @@ def _candidate_tokens(network: str) -> tuple[List[Asset], Set[str]]:
 
 async def run_watch(settings: Settings, db: Optional[DB] = None, max_scans: Optional[int] = None) -> None:
     db = db or DB()
-    net = Net(settings.rpc_urls, network=settings.network, max_concurrency=6)
+    net = Net(
+        settings.rpc_urls, network=settings.network, max_concurrency=6,
+        rate_per_server=settings.requests_per_second_per_server,
+    )
     feed = MarketFeed(net, depth=settings.book_depth)
     tokens, safe = _candidate_tokens(settings.network)
     if not tokens:

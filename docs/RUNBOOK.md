@@ -3,7 +3,7 @@
 Each stage needs your OK before the next. I'll run the commands; this is so
 you can follow along. ✋ marks a point where I need something from you.
 
-## Stage 0: Network access (blocked right now)
+## Stage 0: Network access (Testnet works via port 443; Ripple's port-51234 servers still blocked here)
 
 The environment I'm building in can't reach the XRP Ledger. Two options:
 
@@ -25,8 +25,10 @@ python -m xrplarb init                         # private settings + dashboard pa
 python -m xrplarb check-network --network testnet   # is all-or-nothing Batch available?
 python -m xrplarb wallets-create --network testnet --count 5 --vault
 python -m xrplarb lab-setup                    # practice tokens TUS, TEU, TGB + mispriced pools
-python -m xrplarb tokens-review --network testnet   # safety report -> reports/token_review_testnet.md
+python -m xrplarb tokens-review --network testnet --min-liquidity 20   # safety report -> reports/token_review_testnet.md
 ```
+(The practice pools hold 25 XRP each, so the usual 5,000-XRP liquidity minimum
+is lowered for Testnet only.)
 ✋ You read the token report and confirm which tokens to approve (in writing in chat).
 ```
 python -m xrplarb tokens-approve TUS.<issuer> --network testnet
@@ -34,6 +36,16 @@ python -m xrplarb trustlines --network testnet
 python -m xrplarb run --network testnet        # bots
 python -m xrplarb lab-noise                    # keeps creating gaps to catch
 python -m xrplarb dashboard                    # phone dashboard
+python -m xrplarb security-check               # keys locked down, never in logs/git (bots also check at start)
+```
+Set `timezone:` in `config/settings.yaml` (e.g. `Europe/London`) so "Profit
+today" and the loss cap reset at your midnight. To exclude a token forever:
+`python -m xrplarb tokens-block CURRENCY.ISSUER --reason "..."`.
+
+Run for 1–2 weeks on a machine that stays on. Once a week:
+```
+python -m xrplarb weekly-review --network testnet   # win rate, profit, no-fills, what broke, tuning ideas
+python -m xrplarb profit-history --network testnet  # day by day, your local time
 ```
 We test: trades executing, cancelled trades costing only the fee, missed-gap
 logging, the loss cap (by forcing a tiny limit), the kill switch from your

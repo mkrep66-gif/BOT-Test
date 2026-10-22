@@ -21,7 +21,7 @@ from .alerts import Alerter
 from .amounts import XRP, ZERO, Asset, drops_to_xrp
 from .config import Settings
 from .db import DB
-from .executor import Executor, ExecResult
+from .executor import Executor, ExecResult, _tx_fields
 from .market import MarketFeed, MarketSnapshot
 from .quote import swap
 from .risk import daily_loss, loss_cap_hit, value_holdings
@@ -32,6 +32,8 @@ from .wallets import required_reserve, sweep_excess
 log = logging.getLogger(__name__)
 
 LIQUIDATION_STEPS = [Decimal("0.005"), Decimal("0.02"), Decimal("0.05")]
+MAX_ROUTE_COOLDOWN_S = 1800.0
+RIPPLE_EPOCH = 946684800  # ledger times count seconds from 2000-01-01
 
 
 class MarketLocks:
@@ -87,6 +89,8 @@ class Bot:
         self._last_refresh = 0.0
         self._last_missed: Dict[str, Tuple[str, Decimal]] = {}
         self.errors: List[float] = []
+        self._route_fails: Dict[str, Tuple[int, float]] = {}  # route -> (failures in a row, retry after)
+        self._offer_seen: Dict[int, float] = {}  # stray order sequence -> first seen
 
     @property
     def address(self) -> str:
@@ -130,6 +134,20 @@ class Bot:
         if flag:
             return flag
         return self.halted_reason
+
+    # ---- retry cooldown ------------------------------------------------------
+    def route_cooldown(self, route_key: str) -> Tuple[int, float]:
+        """(failures in a row, seconds left) for a route; (0, 0) when free."""
+        n, until = self._route_fails.get(route_key, (0, 0.0))
+        return n, max(0.0, until - time.time())
+
+    def note_route_result(self, route_key: str, ok: bool) -> None:
+        if ok:
+            self._route_fails.pop(route_key, None)
+            return
+        n = self._route_fails.get(route_key, (0, 0.0))[0] + 1
+        wait = min(MAX_ROUTE_COOLDOWN_S, self.s.route_retry_cooldown_seconds * 2 ** (n - 1))
+        self._route_fails[route_key] = (n, time.time() + wait)
 
     # ---- logging helpers ----------------------------------------------------
     def log_opp(self, opp: Opportunity, action: str, reason: str) -> None:
@@ -264,6 +282,19 @@ class Bot:
                     opp, "missed", "all-or-nothing (Batch) not available on this network and two-step mode is off"
                 )
                 continue
+            n_fail, wait = self.route_cooldown(opp.route.key)
+            if wait > 0:
+                self.log_opp(
+                    opp, "missed",
+                    f"route paused after {n_fail} failed attempt{'s' if n_fail > 1 else ''} in a row (retry in {wait:.0f}s)",
+                )
+                continue
+            if snap.price_age() > self.s.max_price_age_seconds:
+                self.log_opp(
+                    opp, "missed",
+                    f"prices were {snap.price_age():.0f}s old (limit {self.s.max_price_age_seconds:.0f}s) - never trade on stale prices",
+                )
+                continue
             if snap.age() > self.s.scan_interval_seconds * 2:
                 self.log_opp(opp, "missed", "market data too old by the time the bot was free")
                 continue
@@ -281,12 +312,17 @@ class Bot:
             self.locks.release(self.name)
 
     async def execute(self, opp: Opportunity, snap: MarketSnapshot) -> None:
+        # Last check right before sending: prices must still be fresh.
+        if snap.price_age() > self.s.max_price_age_seconds:
+            self.log_opp(opp, "missed", f"prices went stale ({snap.price_age():.0f}s old) just before sending")
+            return
         self.log_opp(opp, "executed", "profitable after all costs")
         if self.atomic:
             res = await self.ex.execute_atomic(opp, fee_drops(snap, ATOMIC_FEE_UNITS))
         else:
             res = await self.ex.execute_two_step(opp, fee_drops(snap, 1), self.recover)
         self.log_trade(opp, res, opp.route.key)
+        self.note_route_result(opp.route.key, res.ok)
         log.info(
             "%s %s %s result=%s profit=%s", self.name, res.mode, opp.route.label, res.result_code, res.profit
         )
@@ -352,6 +388,41 @@ class Bot:
                 notes.append(f"{asset.short}: COULD NOT SELL {left} ({res.note or res.result_code})")
         await self.refresh_balances()
         return notes
+
+    async def cancel_stray_offers(self, snap: MarketSnapshot) -> int:
+        """The bots trade with immediate payments and never leave standing
+        orders. Any order sitting in the wallet (left over from a crash, made by
+        hand, or expired) ties up reserve XRP, so cancel it once it has expired
+        or been seen for longer than stray_offer_max_age_seconds."""
+        offers = await self.net.account_offers(self.address)
+        now = time.time()
+        live = {int(o["seq"]) for o in offers}
+        self._offer_seen = {q: t for q, t in self._offer_seen.items() if q in live}
+        cancelled = 0
+        for o in offers:
+            seq = int(o["seq"])
+            first = self._offer_seen.setdefault(seq, now)
+            exp = o.get("expiration")
+            expired = exp is not None and int(exp) + RIPPLE_EPOCH <= now
+            if not expired and now - first < self.s.stray_offer_max_age_seconds:
+                continue
+            r = await self.ex.cancel_offer(seq, fee_drops(snap, 1))
+            code = r.get("meta", {}).get("TransactionResult", "")
+            fee = drops_to_xrp(_tx_fields(r).get("Fee", "0"))
+            why = "expired" if expired else f"open for {now - first:.0f}s"
+            self.db.event(self.network, self.name, "INFO" if code == "tesSUCCESS" else "WARN", "order-cancel",
+                          f"cancelled stray order #{seq} ({why}): {code}")
+            if fee > 0:
+                self.db.trade(
+                    network=self.network, bot=self.name, route=f"cancel order #{seq}", mode="order-cancel",
+                    tx_hash=r.get("hash", ""), ledger_index=r.get("ledger_index"), input_xrp=ZERO, output_xrp=ZERO,
+                    network_fee_xrp=fee, profit_xrp=-fee, expected_profit_xrp=ZERO, result_code=code,
+                    status="order-cancel", details={"note": why},
+                )
+            if code == "tesSUCCESS":
+                cancelled += 1
+                self._offer_seen.pop(seq, None)
+        return cancelled
 
     async def sweep_dust(self, snap: MarketSnapshot) -> None:
         """Small leftovers from rounding get sold once they're worth selling."""

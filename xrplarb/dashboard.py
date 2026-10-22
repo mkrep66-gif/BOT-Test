@@ -31,7 +31,9 @@ from fastapi import FastAPI, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 
 from . import secrets_store
-from .db import DB, today_utc
+from .db import DB
+from .history import daily_history
+from .localtime import day_start_utc, fmt_local, today_local, tz_label
 from .export import export_all
 from .redact import scrub
 from .routes import Route
@@ -188,7 +190,7 @@ def create_app(db: Optional[DB] = None, network: str = "testnet") -> FastAPI:
             return RedirectResponse("/login", status_code=303)
         d = Path(tempfile.mkdtemp(prefix="xarb-export-"))
         p = export_all(db, d, net)
-        return FileResponse(p, filename=f"xrpl-bots-{net}-{today_utc()}.xlsx")
+        return FileResponse(p, filename=f"xrpl-bots-{net}-{today_local()}.xlsx")
 
     return app
 
@@ -202,7 +204,8 @@ def render_home(db: DB, net: str, csrf: str) -> str:
     killed = db.get_flag("kill") == "1"
     hb = {r["bot"]: r for r in db.query("SELECT * FROM heartbeats")}
     bots = [r["bot"] for r in db.query("SELECT DISTINCT bot FROM balances WHERE network=? ORDER BY bot", (net,))]
-    today = today_utc()
+    today = today_local()
+    midnight = day_start_utc(today)  # your local midnight, in the logbook's UTC
     out = [f"<h1>XRPL bots <span class=pill>{html.escape(net)}</span></h1>"]
     if killed:
         out.append("<div class='card bad'><b>KILL SWITCH IS ON.</b> No trading.</div>")
@@ -217,7 +220,7 @@ def render_home(db: DB, net: str, csrf: str) -> str:
         transfers_all = db.net_transfers_since(net, b, "0000")
         now_v = D(last[0]["total_value_xrp"]) if last else Decimal(0)
         pnl = now_v - D(first[0]["total_value_xrp"]) - transfers_all if first else Decimal(0)
-        pnl_today = now_v - (start_v or now_v) - db.net_transfers_since(net, b, max(start_ts or today, today + "T00:00:00"))
+        pnl_today = now_v - (start_v or now_v) - db.net_transfers_since(net, b, max(start_ts or midnight, midnight))
         tr = db.query("SELECT status FROM trades WHERE network=? AND bot=? AND status IN ('win','loss','failed')", (net, b))
         wins = sum(1 for r in tr if r["status"] == "win")
         rate = f"{wins / len(tr) * 100:.0f}%" if tr else "–"
@@ -241,9 +244,24 @@ def render_home(db: DB, net: str, csrf: str) -> str:
     out.append(
         f"<div class=card><div class=grid><div><div class=k>Total value (XRP)</div><div class=v>{tot_value:.3f}</div></div>"
         f"<div><div class=k>Total P&L (XRP)</div><div class=v>{_fmt(tot_pnl)}</div></div></div>"
-        f"<div class=small>Values count tokens at what they'd sell for right now, not face value.</div></div>"
+        f"<div class=small>Values count tokens at what they'd sell for right now, not face value. "
+        f"\"Today\" started at your local midnight ({html.escape(tz_label())}).</div></div>"
     )
     out += cards or ["<div class=card>No bot data yet.</div>"]
+
+    hist = daily_history(db, net, days=14)
+    out.append(
+        f"<h2>Daily profit ({html.escape(tz_label())})</h2><div class='card scroll'><table>"
+        "<tr><th>Day</th><th>Trades</th><th>Win rate</th><th>No-fills</th><th>Trade profit</th><th>Wallet change</th></tr>"
+    )
+    for d in hist:
+        wr = f"{d.win_rate:.0f}%" if d.win_rate is not None else "–"
+        wc = _fmt(d.wallet_change) if d.wallet_change is not None else "–"
+        out.append(f"<tr><td>{d.day}</td><td>{d.attempts}</td><td>{wr}</td><td>{d.no_fills}</td>"
+                   f"<td>{_fmt(d.trade_profit, 5)}</td><td>{wc}</td></tr>")
+    if not hist:
+        out.append("<tr><td colspan=6>No activity yet.</td></tr>")
+    out.append("</table><div class=small>Wallet change leaves out your own deposits and sweeps to the vault.</div></div>")
 
     best = db.query(
         "SELECT route, COUNT(*) n, SUM(CAST(profit_xrp AS REAL)) p FROM trades WHERE network=? AND status IN ('win','loss','failed') "
@@ -254,15 +272,15 @@ def render_home(db: DB, net: str, csrf: str) -> str:
     out.append("</table></div>")
 
     recent = db.query("SELECT * FROM trades WHERE network=? ORDER BY ts DESC LIMIT 15", (net,))
-    out.append("<h2>Recent trades</h2><div class='card scroll'><table><tr><th>When (UTC)</th><th>Bot</th><th>Route</th><th>Result</th><th>P&L</th></tr>")
+    out.append("<h2>Recent trades</h2><div class='card scroll'><table><tr><th>When</th><th>Bot</th><th>Route</th><th>Result</th><th>P&L</th></tr>")
     for r in recent:
-        out.append(f"<tr><td>{r['ts'][5:19].replace('T', ' ')}</td><td>{r['bot']}</td><td>{html.escape(_label(r['route']))}</td>"
+        out.append(f"<tr><td>{fmt_local(r['ts'])}</td><td>{r['bot']}</td><td>{html.escape(_label(r['route']))}</td>"
                    f"<td>{html.escape(r['status'] or '')}</td><td>{_fmt(D(r['profit_xrp']), 5)}</td></tr>")
     out.append("</table></div>")
 
     missed = db.query(
         "SELECT reason, COUNT(*) n, MAX(CAST(net_profit_xrp AS REAL)) best FROM opportunities "
-        "WHERE network=? AND action='missed' AND ts>=? GROUP BY reason ORDER BY n DESC LIMIT 8", (net, today))
+        "WHERE network=? AND action='missed' AND ts>=? GROUP BY reason ORDER BY n DESC LIMIT 8", (net, midnight))
     out.append("<h2>Gaps missed today (and why)</h2><div class='card scroll'><table><tr><th>Reason</th><th>Count</th><th>Biggest</th></tr>")
     for r in missed:
         out.append(f"<tr><td>{html.escape(r['reason'])}</td><td>{r['n']}</td><td>{(r['best'] or 0):.5f}</td></tr>")
@@ -271,7 +289,7 @@ def render_home(db: DB, net: str, csrf: str) -> str:
     ev = db.query("SELECT * FROM events WHERE level IN ('WARN','ERROR','ALERT') ORDER BY ts DESC LIMIT 10")
     out.append("<h2>Alerts & events</h2><div class='card scroll'><table>")
     for r in ev:
-        out.append(f"<tr><td class=small>{r['ts'][5:19].replace('T', ' ')}</td><td>{html.escape(scrub(r['message'] or ''))[:300]}</td></tr>")
+        out.append(f"<tr><td class=small>{fmt_local(r['ts'])}</td><td>{html.escape(scrub(r['message'] or ''))[:300]}</td></tr>")
     out.append("</table></div>")
 
     w = db.query(

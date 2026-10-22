@@ -84,9 +84,13 @@ So the bots never compete with each other.
 - **Honest valuation:** any tokens held are valued by simulating actually selling
   them into the current books and pools, including fees and price impact. A token
   nobody is buying is worth 0.
-- **Daily loss cap:** today's value vs the value at midnight (UTC), ignoring money
+- **Daily loss cap:** today's value vs the value at your local midnight, ignoring money
   you moved in or out. Over 10% down → stop, sell tokens to XRP, alert, stay off
   until Resume.
+- **Stale prices:** a trade is only sent if the prices it was worked out from
+  come from a ledger that closed less than 60 seconds ago.
+- **Retry cooldown:** after a failed or cancelled trade, that route rests for 30 s,
+  then 60 s, 120 s … up to 30 minutes, and goes back to normal after a success.
 - **Crashes:** a bot that errors is retried. 3 crashes within an hour → it's stopped
   and you're alerted. If the whole program dies, the server restarts it and it
   alerts you that it restarted.

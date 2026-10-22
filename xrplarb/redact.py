@@ -9,6 +9,7 @@ Every log line and every alert passes through scrub(), which removes:
 from __future__ import annotations
 
 import logging
+import os
 import re
 from typing import Iterable, List
 
@@ -48,14 +49,26 @@ class RedactingFilter(logging.Filter):
         return True
 
 
+class RedactingFormatter(logging.Formatter):
+    """Scrubs the whole formatted line, including error tracebacks (which
+    the filter above never sees)."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        return scrub(super().format(record))
+
+
 def setup_logging(level: int = logging.INFO, logfile: str | None = None) -> None:
     root = logging.getLogger()
     root.setLevel(level)
     for h in list(root.handlers):
         root.removeHandler(h)
-    fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    fmt = RedactingFormatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
     handlers: List[logging.Handler] = [logging.StreamHandler()]
     if logfile:
+        os.makedirs(os.path.dirname(logfile) or ".", exist_ok=True)
+        # owner-only, like the secrets file: logs hold your trading history
+        os.close(os.open(logfile, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600))
+        os.chmod(logfile, 0o600)
         handlers.append(logging.FileHandler(logfile))
     for h in handlers:
         h.setFormatter(fmt)

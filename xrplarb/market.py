@@ -63,6 +63,7 @@ class MarketSnapshot:
     reserve_base_xrp: Decimal = Decimal(1)
     reserve_inc_xrp: Decimal = Decimal("0.2")
     fetch_errors: int = 0
+    ledger_age_s: float = 0.0  # how old the validated ledger already was when we started reading
 
     def edge(self, src: Asset, dst: Asset) -> Optional[Edge]:
         return self.edges.get((src.key, dst.key))
@@ -72,6 +73,10 @@ class MarketSnapshot:
 
     def age(self) -> float:
         return time.time() - self.taken_at
+
+    def price_age(self) -> float:
+        """Seconds since the ledger these prices come from closed."""
+        return self.age() + self.ledger_age_s
 
 
 class MarketFeed:
@@ -119,6 +124,7 @@ class MarketFeed:
             load_factor=state["load_factor"],
             reserve_base_xrp=state["reserve_base_xrp"],
             reserve_inc_xrp=state["reserve_inc_xrp"],
+            ledger_age_s=state.get("ledger_age_s", 0.0),
         )
 
         issuers = {a.issuer for pair in unordered for a in pair if not a.is_xrp}

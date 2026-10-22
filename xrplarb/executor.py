@@ -25,17 +25,19 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 import asyncio
+import time
 
 from xrpl.asyncio.ledger import get_latest_validated_ledger_sequence
 from xrpl.asyncio.transaction import autofill_and_sign, submit
 from xrpl.models.path import PathStep
 from xrpl.models.requests import AccountTx, Tx
-from xrpl.models.transactions import Batch, BatchFlag, Payment, PaymentFlag
+from xrpl.models.transactions import Batch, BatchFlag, OfferCancel, Payment, PaymentFlag
 from xrpl.utils import get_balance_changes
 from xrpl.wallet import Wallet
 
 from .amounts import ONE, XRP, ZERO, Asset, ROUND_DOWN, ROUND_UP, drops_to_xrp, make_amount_model
 from .scanner import Opportunity
+from .xrplnet import RPCError
 
 log = logging.getLogger(__name__)
 
@@ -154,6 +156,9 @@ def legs_from_meta(
 class Executor:
     # How many ledgers (~4s each) a transaction may wait before it expires.
     LEDGER_WINDOW = 4
+    # Give up waiting on a transaction after this long even if the server never
+    # reports its ledger passing the deadline (e.g. the server got stuck).
+    MAX_WAIT_S = 90.0
 
     def __init__(self, net, wallet: Wallet):
         self.net = net
@@ -170,8 +175,16 @@ class Executor:
     async def submit_tx(self, tx) -> Dict[str, Any]:
         """Sign, submit, and wait until the outcome is final. Never raises for
         a failed transaction - returns its result code instead, so failures
-        get logged like everything else."""
+        get logged like everything else. (Network trouble does raise.)"""
         client = await self.net.working_client()
+        try:
+            return await self._submit_on(client, tx)
+        except Exception as e:
+            if not isinstance(e, RPCError) and hasattr(self.net, "report_failure"):
+                await self.net.report_failure(client, e)
+            raise
+
+    async def _submit_on(self, client, tx) -> Dict[str, Any]:
         signed = await autofill_and_sign(tx, client, self.wallet)
         tx_hash = signed.get_hash()
         sub = await submit(signed, client)
@@ -181,8 +194,13 @@ class Executor:
             # Rejected outright: never enters a ledger, no fee charged.
             return {**base, "tx_json": {"Fee": "0"}, "meta": {"TransactionResult": prelim}}
         lls = signed.last_ledger_sequence or 0
+        deadline = time.monotonic() + self.MAX_WAIT_S
         while True:
             await asyncio.sleep(1.0)
+            if time.monotonic() > deadline:
+                # Outcome unknown; balances are re-read after every trade, so
+                # the bookkeeping catches up either way.
+                return {**base, "tx_json": {"Fee": "0"}, "meta": {"TransactionResult": f"timeout({prelim})"}}
             r = await client.request(Tx(transaction=tx_hash))
             if r.is_successful() and r.result.get("validated"):
                 return r.result
@@ -284,6 +302,16 @@ class Executor:
         res.note = "second leg failed; recovery " + ("sold the token back to XRP" if rec.ok else "COULD NOT sell everything")
         res.mode = "two-step+recovery"
         return res
+
+    # ---- housekeeping ---------------------------------------------------------
+    async def cancel_offer(self, offer_sequence: int, fee_drops: int) -> Dict[str, Any]:
+        tx = OfferCancel(
+            account=self.address,
+            offer_sequence=offer_sequence,
+            fee=str(fee_drops),
+            last_ledger_sequence=await self.last_ledger(),
+        )
+        return await self.submit_tx(tx)
 
     # ---- selling a token back to XRP -------------------------------------
     async def sell_to_xrp(
