@@ -350,6 +350,55 @@ def cmd_lab_noise(args):
     asyncio.run(lab_noise(_net(s), every_s=args.every, rounds=args.rounds))
 
 
+def cmd_status(args):
+    """One screen: is each bot alive, what is it doing, how is today going."""
+    import time as _t
+    from datetime import datetime, timezone
+
+    from .history import day_result
+    from .localtime import day_start_utc, fmt_local, local_tz, tz_label
+
+    s = _settings(args)
+    db = DB()
+    today = today_local()
+    print(f"XRPL bots on {s.network} - {datetime.now(local_tz()).strftime('%Y-%m-%d %H:%M')} ({tz_label()})")
+    stopped_cleanly = db.get_flag("clean_shutdown") == "1"
+    if db.get_flag("kill") == "1":
+        print("  KILL SWITCH IS ON - no trading until Resume.")
+    beats = {r["bot"]: r for r in db.query("SELECT * FROM heartbeats")}
+    midnight = day_start_utc(today)
+    for i in range(1, s.num_bots + 1):
+        name = f"bot{i}"
+        h = beats.get(name)
+        if h is None:
+            print(f"  {name}: no heartbeat yet")
+            continue
+        age = _t.time() - datetime.strptime(h["ts"][:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc).timestamp()
+        if age <= 120:
+            state = h["status"]
+        else:
+            state = "stopped" if stopped_cleanly else "NOT RESPONDING (crashed or server down?)"
+        t = db.query(
+            "SELECT COUNT(*) n, SUM(status='win') w, SUM(CAST(profit_xrp AS REAL)) p FROM trades "
+            "WHERE network=? AND bot=? AND ts>=? AND status IN ('win','loss','failed')",
+            (s.network, name, midnight),
+        )[0]
+        last = db.query("SELECT ts FROM trades WHERE network=? AND bot=? AND status='win' ORDER BY ts DESC LIMIT 1",
+                        (s.network, name))
+        detail = f" - {h['detail']}" if h["detail"] else ""
+        print(f"  {name}: {state}{detail} | today {t['n'] or 0} trades, {t['w'] or 0} wins, "
+              f"{(t['p'] or 0):+.4f} XRP | last win {fmt_local(last[0]['ts']) if last else 'none yet'}")
+    d = day_result(db, s.network, today)
+    wc = f"{d.wallet_change:+.6f} XRP" if d.wallet_change is not None else "n/a"
+    print(f"  Today so far: {d.attempts} trades, {d.wins} wins, {d.no_fills} no-fills; profit {d.trade_profit:+.6f} XRP; wallet change {wc}")
+    problems = db.query(
+        "SELECT ts, bot, kind, message FROM events WHERE level IN ('ERROR','WARN') AND kind != 'net-health' AND ts>=? "
+        "ORDER BY ts DESC LIMIT 5", (midnight,))
+    print("  Problems today: " + ("none" if not problems else ""))
+    for r in problems:
+        print(f"    {fmt_local(r['ts'])} {r['bot']}: {r['kind']} - {(r['message'] or '')[:150]}")
+
+
 def cmd_profit_history(args):
     from .history import daily_history
     from .localtime import tz_label
@@ -451,6 +500,7 @@ def main(argv=None):
     sp = add("dashboard", cmd_dashboard, "start the phone dashboard")
     sp.add_argument("--host")
     sp.add_argument("--port", type=int)
+    add("status", cmd_status, "one-screen summary: is each bot running, today's trades and problems")
     sp = add("profit-history", cmd_profit_history, "day-by-day results in your local time")
     sp.add_argument("--days", type=int, default=14)
     sp = add("weekly-review", cmd_weekly_review, "plain-English review of the past week (win rate, profit, no-fills, problems)")

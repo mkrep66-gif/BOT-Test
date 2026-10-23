@@ -372,3 +372,84 @@ def test_transaction_validated_at_deadline_is_not_reported_expired(monkeypatch):
 
     r = run(Executor(None, W())._submit_on(Client(), object()))
     assert r["meta"]["TransactionResult"] == "tesSUCCESS"
+
+
+# ---- one installation per wallet ---------------------------------------------------
+
+def _entry(account, by=None, age_s=10, inner=False, h="H"):
+    from xrplarb.instance import MEMO_TYPE, RIPPLE_EPOCH
+
+    tx = {"Account": account, "date": int(time.time() - age_s - RIPPLE_EPOCH), "Flags": 0x40000000 if inner else 0}
+    if by:
+        tx["Memos"] = [{"Memo": {"MemoType": MEMO_TYPE.encode().hex().upper(), "MemoData": by.encode().hex().upper()}}]
+    return {"hash": h, "tx_json": tx, "meta": {"ParentBatchID": "P"} if inner else {}}
+
+
+def test_foreign_transactions_detects_other_installations_only():
+    from xrplarb.instance import foreign_transactions
+
+    since = time.time() - 600
+    entries = [
+        _entry("rME", by="server-1", h="mine"),
+        _entry("rME", inner=True, h="inner-of-my-batch"),
+        _entry("rFAUCET", h="incoming"),
+        _entry("rME", by="server-1", age_s=3600, h="old"),
+        _entry("rME", by="laptop-9", h="theirs"),
+        _entry("rME", h="untagged"),
+    ]
+    found = foreign_transactions("rME", entries, since, me="server-1")
+    assert [f["hash"] for f in found] == ["theirs", "untagged"]
+    assert found[0]["by"] == "laptop-9"
+
+
+def test_bot_halts_when_wallet_used_elsewhere(mk):
+    bot, db, net = mk()
+
+    async def account_tx(addr, limit=40):
+        return [_entry(addr, by="someone-else")]
+
+    net.account_tx = account_tx
+    bot._started = time.time() - 60
+    run(bot.check_wallet_exclusive())
+    assert bot.halted() and "another installation" in bot.halted()
+    assert any("STOPPED" in s for s in bot.alerter.sent)
+
+
+def test_second_run_on_same_machine_is_refused(tmp_path, monkeypatch):
+    import xrplarb.instance as inst
+
+    monkeypatch.setattr(inst, "DATA_DIR", tmp_path)
+    a, b = inst.RunLock("testnet"), inst.RunLock("testnet")
+    a.acquire()
+    with pytest.raises(SystemExit):
+        b.acquire()
+    a.release()
+    b.acquire()
+    b.release()
+
+
+def test_every_transaction_is_tagged_with_this_installation():
+    from xrpl.models.transactions import Payment
+
+    import xrplarb.executor as ex_mod
+    from xrplarb.executor import Executor
+    from xrplarb.instance import instance_id, tx_instance
+
+    sent = []
+
+    class FakeNet:
+        async def working_client(self):
+            return None
+
+    class W:
+        classic_address = "rBOT"
+
+    ex = Executor(FakeNet(), W())
+
+    async def fake_submit_on(client, tx):
+        sent.append(tx)
+        return {}
+
+    ex._submit_on = fake_submit_on
+    run(ex.submit_tx(Payment(account="rBOT", destination="rX", amount="1")))
+    assert tx_instance(sent[0].to_xrpl()) == instance_id()

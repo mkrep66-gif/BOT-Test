@@ -97,3 +97,18 @@ def test_tighter_buffer_makes_marginal_gap_tradeable():
     kw = dict(KW, slippage_buffer=D("0.0005"))
     o = evaluate(Route((XRP, A, B, XRP)), _snap(D("0.015")), **kw)
     assert o.executable and o.safe_profit >= D("0.02")
+
+
+def test_every_bot_gets_a_short_loop_when_there_are_enough():
+    from xrplarb.amounts import XRP, Asset
+
+    toks = {c: Asset(c, "r" + c) for c in ("TUS", "TEU", "TGB", "TJP")}
+    links = [("TUS", "TEU"), ("TEU", "TGB"), ("TUS", "TGB"), ("TEU", "TJP"), ("TGB", "TJP")]
+    pairs = [p for t in toks.values() for p in ((XRP, t), (t, XRP))]
+    pairs += [p for a, b in links for p in ((toks[a], toks[b]), (toks[b], toks[a]))]
+    parts = partition_routes(build_routes(pairs, 3, 5), 5)
+    assert all(any(r.hops == 3 for r in p) for p in parts)
+    groups = [{r.token_set_key for r in p} for p in parts]
+    for i, gi in enumerate(groups):  # a token set never split between bots
+        for gj in groups[i + 1:]:
+            assert not gi & gj

@@ -28,6 +28,7 @@ from xrpl.models.requests import (
     AccountInfo,
     AccountLines,
     AccountOffers,
+    AccountTx,
     BookOffers,
     GenericRequest,
     LedgerEntry,
@@ -339,6 +340,16 @@ class Net:
             marker = r.get("marker")
             if not marker:
                 return lines
+
+    async def account_tx(self, address: str, limit: int = 40) -> List[Dict[str, Any]]:
+        """Most recent transactions touching this account (newest first)."""
+        try:
+            r = await self.request(AccountTx(account=address, limit=limit, ledger_index_min=-1, ledger_index_max=-1))
+        except RPCError as e:
+            if e.error == "actNotFound":
+                return []
+            raise
+        return r.get("transactions", [])
 
     async def account_offers(self, address: str) -> List[Dict[str, Any]]:
         """Standing orders (offers) owned by this account."""

@@ -19,7 +19,11 @@ dpkg-reconfigure -f noninteractive unattended-upgrades
 
 id xrplarb >/dev/null 2>&1 || useradd --system --create-home --home-dir /home/xrplarb --shell /usr/sbin/nologin xrplarb
 mkdir -p "$APP"
-rsync -a --exclude secrets --exclude data --exclude .git ./ "$APP"/
+rsync -a --exclude secrets --exclude data --exclude .git --exclude config ./ "$APP"/
+# Settings, token approvals and the block list belong to this server: copy
+# them on the first install only, never over the server's own on updates.
+mkdir -p "$APP/config"
+rsync -a --ignore-existing ./config/ "$APP/config/"
 mkdir -p "$APP/secrets" "$APP/data" "$APP/reports"
 python3 -m venv "$APP/.venv"
 "$APP/.venv/bin/pip" install --upgrade pip
@@ -28,6 +32,9 @@ chown -R xrplarb:xrplarb "$APP"
 chmod 700 "$APP/secrets"
 
 cp deploy/xrplarb-*.service /etc/systemd/system/
+install -m 755 deploy/xrplarb-ctl /usr/local/bin/xrplarb-ctl
 systemctl daemon-reload
+# On an update, restart whatever is running so the new code takes effect.
+systemctl try-restart xrplarb-bots xrplarb-labnoise xrplarb-dashboard 2>/dev/null || true
 echo
-echo "Installed. Nothing is running yet. Next steps are in docs/GOING_LIVE.md."
+echo "Installed. (Anything already running was restarted on the new code; nothing new was started.)"

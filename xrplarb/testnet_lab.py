@@ -3,9 +3,14 @@
 Testnet has almost no real tokens or trading, so to prove the bots work end
 to end we create:
   * two test token issuers (one with a 0.2% transfer fee, to test fee handling)
-  * three tokens: TUS, TEU (issuer A) and TGB (issuer B) - 3-letter codes, like test USD/EUR/GBP
-  * AMM pools against XRP, plus two token/token pools that are deliberately
-    mispriced, so profitable loops exist
+  * four tokens: TUS, TEU, TJP (issuer A) and TGB (issuer B) - 3-letter codes,
+    like test USD/EUR/JPY/GBP
+  * AMM pools against XRP, plus five token/token pools that are deliberately
+    mispriced, so profitable loops exist - enough separate groups of loops
+    that each of the 5 bots gets its own share
+
+Safe to re-run: existing wallets, tokens and pools are kept (and approvals
+too); only missing parts are added.
   * a "noise" mode that keeps knocking prices out of line again
 
 This proves the plumbing (finding, pricing, atomic execution, logging,
@@ -42,11 +47,17 @@ from .xrplnet import Net
 
 log = logging.getLogger(__name__)
 
-TOKENS = {"TUS": "lab_issuer_a", "TEU": "lab_issuer_a", "TGB": "lab_issuer_b"}
+TOKENS = {"TUS": "lab_issuer_a", "TEU": "lab_issuer_a", "TGB": "lab_issuer_b", "TJP": "lab_issuer_a"}
 # price of 1 token in XRP
-PRICES = {"TUS": Decimal("2.0"), "TEU": Decimal("2.2"), "TGB": Decimal("2.6")}
+PRICES = {"TUS": Decimal("2.0"), "TEU": Decimal("2.2"), "TGB": Decimal("2.6"), "TJP": Decimal("1.5")}
 # token/token pools priced this far off the fair cross rate (creates gaps)
-SKEWS = {("TUS", "TEU"): Decimal("0.04"), ("TEU", "TGB"): Decimal("-0.03")}
+SKEWS = {
+    ("TUS", "TEU"): Decimal("0.04"),
+    ("TEU", "TGB"): Decimal("-0.03"),
+    ("TUS", "TGB"): Decimal("0.05"),
+    ("TEU", "TJP"): Decimal("-0.04"),
+    ("TGB", "TJP"): Decimal("0.03"),
+}
 
 
 def _ic(cur: str, issuer: str, value: Decimal | str) -> IssuedCurrencyAmount:
@@ -72,7 +83,7 @@ async def lab_setup(net: Net, pool_xrp: Decimal = Decimal(25)) -> List[str]:
         out.append(f"{name}: {await create_wallet(net, 'testnet', name)}")
     mm = load_wallet("testnet", "lab_mm")
     faucet = NETWORKS["testnet"]["faucet"]
-    while await net.xrp_balance(mm.classic_address) < pool_xrp * 5 + 20:
+    while await net.xrp_balance(mm.classic_address) < pool_xrp * (len(TOKENS) + 1) + 20:
         await generate_faucet_wallet(await net.working_client(), wallet=mm, faucet_host=faucet, usage_context="xrplarb-lab")
 
     ia, ib = load_wallet("testnet", "lab_issuer_a"), load_wallet("testnet", "lab_issuer_b")
@@ -84,9 +95,12 @@ async def lab_setup(net: Net, pool_xrp: Decimal = Decimal(25)) -> List[str]:
 
     assets = lab_assets()
     mx = Executor(net, mm)
+    held = await net.token_balances(mm.classic_address)
     for cur, a in assets.items():
         await _ok(mx, TrustSet(account=mm.classic_address, limit_amount=_ic(cur, a.issuer, "1000000000000"),
                                flags=TrustSetFlag.TF_SET_NO_RIPPLE), f"mm trust {cur}")
+        if held.get(a, Decimal(0)) >= 1000:
+            continue  # already issued on an earlier run
         iw = ia if TOKENS[cur] == "lab_issuer_a" else ib
         await _ok(Executor(net, iw), Payment(account=iw.classic_address, destination=mm.classic_address,
                                              amount=_ic(cur, a.issuer, "100000")), f"issue {cur}")
@@ -115,7 +129,10 @@ async def lab_setup(net: Net, pool_xrp: Decimal = Decimal(25)) -> List[str]:
     from .config import save_token_pairs
 
     save_token_pairs("testnet", [(assets[c1], assets[c2]) for c1, c2 in SKEWS])
-    out.append("Created 3 lab tokens, 3 XRP pools and 2 skewed token/token pools.")
+    out.append(
+        f"Lab ready: {len(assets)} tokens, {len(assets)} XRP pools and {len(SKEWS)} skewed token/token pools "
+        "(existing ones kept; pools that already existed show as tecDUPLICATE in the log)."
+    )
     return out
 
 

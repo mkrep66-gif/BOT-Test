@@ -92,17 +92,20 @@ def partition_routes(routes: Sequence[Route], n_bots: int) -> List[List[Route]]:
     """Split routes between bots so they don't compete.
 
     All loops over the same set of tokens (in any order/direction) go to the
-    same bot, because they trade the same markets. Groups are then handed out
-    to balance the number of routes per bot. Deterministic: the same inputs
-    always give the same split. Execution additionally uses market locks, so
-    two bots can never hit the same market at the same time.
+    same bot, because they trade the same markets. Groups of short loops are
+    handed out first (they are cheapest to trade, so this gives every bot
+    some), then the rest go wherever there are fewest routes. Deterministic:
+    the same inputs always give the same split. Execution additionally uses
+    market locks, so two bots can never hit the same market at the same time.
     """
     if n_bots <= 0:
         raise ValueError("n_bots must be >= 1")
     groups: Dict[str, List[Route]] = {}
     for r in routes:
         groups.setdefault(r.token_set_key, []).append(r)
-    ordered = sorted(groups.items(), key=lambda kv: (-len(kv[1]), _stable_hash(kv[0])))
+    ordered = sorted(
+        groups.items(), key=lambda kv: (min(r.hops for r in kv[1]), -len(kv[1]), _stable_hash(kv[0]))
+    )
     buckets: List[List[Route]] = [[] for _ in range(n_bots)]
     for _, rs in ordered:
         target = min(range(n_bots), key=lambda i: (len(buckets[i]), i))

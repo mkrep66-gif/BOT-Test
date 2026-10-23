@@ -22,6 +22,7 @@ from .amounts import XRP, ZERO, Asset, drops_to_xrp
 from .config import Settings
 from .db import DB
 from .executor import Executor, ExecResult, _tx_fields
+from .instance import check_wallet
 from .market import MarketFeed, MarketSnapshot
 from .quote import swap
 from .risk import daily_loss, loss_cap_hit, value_holdings
@@ -91,6 +92,7 @@ class Bot:
         self.errors: List[float] = []
         self._route_fails: Dict[str, Tuple[int, float]] = {}  # route -> (failures in a row, retry after)
         self._offer_seen: Dict[int, float] = {}  # stray order sequence -> first seen
+        self._started = time.time()
 
     @property
     def address(self) -> str:
@@ -388,6 +390,22 @@ class Bot:
                 notes.append(f"{asset.short}: COULD NOT SELL {left} ({res.note or res.result_code})")
         await self.refresh_balances()
         return notes
+
+    async def check_wallet_exclusive(self) -> None:
+        """Stop if another installation has sent a transaction from this
+        wallet since we started (see instance.py)."""
+        if self.halted_reason:
+            return
+        foreign = await check_wallet(self.net, self.address, self._started)
+        if foreign:
+            who = ", ".join(sorted({t["by"] for t in foreign}))
+            self.halt(f"wallet used by another installation ({who})")
+            await self.alerter.send(
+                f"{self.name} STOPPED: its wallet is being used somewhere else",
+                f"Transactions from {who} appeared on {self.address}. Only one place may run these wallets. "
+                "Stop the other copy, then press Resume.",
+                force=True,
+            )
 
     async def cancel_stray_offers(self, snap: MarketSnapshot) -> int:
         """The bots trade with immediate payments and never leave standing

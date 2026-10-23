@@ -25,6 +25,7 @@ from .db import DB
 from .market import MarketFeed, MarketSnapshot
 from .redact import register_secrets
 from .routes import build_routes, partition_routes
+from .instance import LOOKBACK_S, RunLock, check_wallet, instance_id
 from .tokens import TokenReport, assess_issuer
 from .wallets import bot_name, load_wallet
 from .xrplnet import Net
@@ -102,6 +103,21 @@ class Supervisor:
         missing = [n for n in names if n not in wallets]
         if missing:
             raise SystemExit(f"Missing wallets for {missing}. Run `wallets create` first.")
+
+        # Never trade wallets that another installation is using right now.
+        since = time.time() - LOOKBACK_S
+        clashes = []
+        for n in names:
+            for t in await check_wallet(self.net, wallets[n]["address"], since):
+                clashes.append(f"{n}: transaction {t['hash'][:12]}… sent by {t['by']}")
+        if clashes:
+            msg = (
+                f"These wallets were used by another installation in the last {LOOKBACK_S // 60} minutes "
+                f"(this one is {instance_id()}). Stop the bots there first:\n" + "\n".join(clashes)
+            )
+            self.db.event(s.network, "system", "ERROR", "wallet-clash", msg)
+            await self.alerter.send("Bots NOT started: wallets in use elsewhere", msg, force=True)
+            raise SystemExit(msg)
 
         snap = await self.feed.snapshot(self.tokens, self.token_pairs)
         routes = build_routes(snap.pairs(), s.min_hops, s.max_hops)
@@ -226,6 +242,7 @@ class Supervisor:
         b.busy = True
         try:
             await b.refresh_balances()
+            await b.check_wallet_exclusive()
             await b.cancel_stray_offers(snap)
             if not b.halted():
                 await b.sweep_dust(snap)
@@ -347,6 +364,15 @@ class Supervisor:
         return "Commands: /status, /kill <pin>, /resume <pin>"
 
     async def run(self) -> None:
+        lock = RunLock(self.s.network)
+        lock.acquire()
+        try:
+            await self._run()
+        finally:
+            lock.release()
+            await self.net.close()
+
+    async def _run(self) -> None:
         await self.setup()
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):

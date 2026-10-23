@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Start / stop / check the bots. Installed to /usr/local/bin by harden.sh;
+# the Desktop buttons run it over SSH:  sudo xrplarb-ctl start|stop|restart|status
+set -euo pipefail
+
+APP=/opt/xrplarb
+# Testnet only: lab noise keeps the practice market moving.
+SERVICES=(xrplarb-bots xrplarb-labnoise xrplarb-dashboard)
+xr() { (cd "$APP" && sudo -u xrplarb "$APP/.venv/bin/python" -m xrplarb "$@"); }
+
+case "${1:-status}" in
+    start)
+        systemctl enable --now xrplarb-bots xrplarb-labnoise
+        if grep -qs password_hash "$APP/secrets/secrets.yaml"; then
+            systemctl enable --now xrplarb-dashboard
+        else
+            echo "(Dashboard not started: set its password first - see the instructions in chat.)"
+        fi
+        echo "Started (and set to start again after a reboot)."
+        ;;
+    stop)
+        # A normal stop: in-flight trades finish (each is all-or-nothing), then
+        # the bots exit. This is NOT the kill switch - tokens aren't sold.
+        systemctl disable --now xrplarb-bots xrplarb-labnoise
+        echo "Bots stopped (they stay off after a reboot until you press Start). Dashboard still on."
+        ;;
+    restart)
+        systemctl try-restart "${SERVICES[@]}"   # only the ones that are running
+        echo "Restarted."
+        ;;
+    status)
+        for s in "${SERVICES[@]}"; do
+            printf '  %-20s %s\n' "$s" "$(systemctl is-active "$s" 2>/dev/null || true)"
+        done
+        echo
+        xr status --network testnet
+        ;;
+    *)
+        echo "usage: xrplarb-ctl start|stop|restart|status"; exit 2 ;;
+esac

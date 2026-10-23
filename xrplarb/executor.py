@@ -25,6 +25,7 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 import asyncio
+import dataclasses
 import time
 
 from xrpl.asyncio.ledger import get_latest_validated_ledger_sequence
@@ -36,6 +37,7 @@ from xrpl.utils import get_balance_changes
 from xrpl.wallet import Wallet
 
 from .amounts import ONE, XRP, ZERO, Asset, ROUND_DOWN, ROUND_UP, drops_to_xrp, make_amount_model
+from .instance import memo as instance_memo
 from .scanner import Opportunity
 from .xrplnet import RPCError
 
@@ -182,6 +184,9 @@ class Executor:
         """Sign, submit, and wait until the outcome is final. Never raises for
         a failed transaction - returns its result code instead, so failures
         get logged like everything else. (Network trouble does raise.)"""
+        if not getattr(tx, "memos", None):
+            # name this installation on every transaction (see instance.py)
+            tx = dataclasses.replace(tx, memos=[instance_memo()])
         client = await self.net.working_client()
         try:
             return await self._submit_on(client, tx)
