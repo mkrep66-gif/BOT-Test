@@ -7,3 +7,7 @@ blocked:
 - symbol: BCHAMP
   reason: 'Owner''s instruction 2026-10-23: never trade BCHAMP (any issuer)'
   blocked_on: '2026-10-23'
+- issuer: rhYhn7s6z4HAfuJm7ehuSE7wxepRoUPwpi
+  reason: 'Owner''s instruction 2026-10-23: issuer of BCHAMP - block everything it
+    issues'
+  blocked_on: '2026-10-23'
