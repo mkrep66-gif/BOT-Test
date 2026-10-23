@@ -11,9 +11,23 @@ if ! ssh -f -N -L "$FWD" -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 "
     read -n 1 -s -r -p "Tap any key to close"
     exit 1
 fi
-echo "Tunnel is up. Opening Chrome at http://localhost:8080 ..."
+code=$(curl -s -o /dev/null -m 10 -w '%{http_code}' http://localhost:8080/login)
+if [ "$code" != "200" ]; then
+    echo
+    echo "The tunnel works, but the dashboard on the server isn't answering (got: ${code:-nothing})."
+    echo "It may be restarting. Its recent log:"
+    ssh "$SERVER" "sudo journalctl -u xrplarb-dashboard -n 15 --no-pager -o cat"
+    pkill -f -- "-L $FWD"
+    read -n 1 -s -r -p "Send Claude a screenshot of this. Tap any key to close"
+    exit 1
+fi
+echo "Tunnel is up and the dashboard answers. Opening Chrome at http://localhost:8080 ..."
 termux-open-url http://localhost:8080
 echo
-read -r -p "When you're finished with the dashboard, come back here and press Enter to close the tunnel. "
+echo "Use the dashboard in Chrome. The tunnel stays open until you close it here."
+while true; do
+    read -r -p "Type close and press Enter when you're finished: " answer || sleep 5
+    [ "$answer" = "close" ] && break
+done
 pkill -f -- "-L $FWD"
 echo "Tunnel closed."
