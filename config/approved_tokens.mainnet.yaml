@@ -7,21 +7,39 @@ tokens:
 - name: 3RDEYE
   currency: '3352444559450000000000000000000000000000'
   issuer: rHjyBqFM5oQvXu1soWtATC4r1V6GBnhCQQ
-  approved: false
+  approved: true
   source: candidate from mainnet bot scan 2026-10-23 (watch-only until reviewed and
     approved)
   verdict: CAUTION
   review_summary:
   - no red flags
+  approved_on: '2026-10-23'
+  approved_note: 'Owner approved in chat 2026-10-23: ''add the seven and whatever
+    is already on our list I approve'' (mainnet trading still off; testing on Testnet)'
+  approval_snapshot:
+    transfer_fee_pct: '0'
+    can_freeze: true
+    clawback: false
+    require_auth: false
+    issuer_locked: true
 - name: ARMY
   currency: 41524D5900000000000000000000000000000000
   issuer: rGG3wQ4kUzd7Jnmk1n5NWPZjjut62kCBfC
-  approved: false
+  approved: true
   source: candidate from mainnet bot scan 2026-10-23 (watch-only until reviewed and
     approved)
   verdict: CAUTION
   review_summary:
   - no red flags
+  approved_on: '2026-10-23'
+  approved_note: 'Owner approved in chat 2026-10-23: ''add the seven and whatever
+    is already on our list I approve'' (mainnet trading still off; testing on Testnet)'
+  approval_snapshot:
+    transfer_fee_pct: '0'
+    can_freeze: true
+    clawback: false
+    require_auth: false
+    issuer_locked: true
 - name: BITx
   currency: '4249547800000000000000000000000000000000'
   issuer: rBitcoiNXev8VoVxV7pwoQx1sSfonVP9i3
@@ -34,21 +52,39 @@ tokens:
 - name: DROP
   currency: 44524F5000000000000000000000000000000000
   issuer: rszenFJoDdiGjyezQc8pME9KWDQH43Tswh
-  approved: false
+  approved: true
   source: candidate from mainnet bot scan 2026-10-23 (watch-only until reviewed and
     approved)
   verdict: CAUTION
   review_summary:
   - no red flags
+  approved_on: '2026-10-23'
+  approved_note: 'Owner approved in chat 2026-10-23: ''add the seven and whatever
+    is already on our list I approve'' (mainnet trading still off; testing on Testnet)'
+  approval_snapshot:
+    transfer_fee_pct: '0'
+    can_freeze: true
+    clawback: false
+    require_auth: false
+    issuer_locked: true
 - name: FUZZY
   currency: 46555A5A59000000000000000000000000000000
   issuer: rhCAT4hRdi2Y9puNdkpMzxrdKa5wkppR62
-  approved: false
+  approved: true
   source: candidate from mainnet bot scan 2026-10-23 (watch-only until reviewed and
     approved)
   verdict: CAUTION
   review_summary:
   - no red flags
+  approved_on: '2026-10-23'
+  approved_note: 'Owner approved in chat 2026-10-23: ''add the seven and whatever
+    is already on our list I approve'' (mainnet trading still off; testing on Testnet)'
+  approval_snapshot:
+    transfer_fee_pct: '0'
+    can_freeze: true
+    clawback: false
+    require_auth: false
+    issuer_locked: true
 - name: HOOTS
   currency: 484F4F5453000000000000000000000000000000
   issuer: rNPWp2RX2GHVbFbG77k76Ak8nhKwrHu17b
@@ -62,21 +98,39 @@ tokens:
 - name: PHNIX
   currency: 50484E4958000000000000000000000000000000
   issuer: rDFXbW2ZZCG5WgPtqwNiA2xZokLMm9ivmN
-  approved: false
+  approved: true
   source: candidate from mainnet bot scan 2026-10-23 (watch-only until reviewed and
     approved)
   verdict: CAUTION
   review_summary:
   - no red flags
+  approved_on: '2026-10-23'
+  approved_note: 'Owner approved in chat 2026-10-23: ''add the seven and whatever
+    is already on our list I approve'' (mainnet trading still off; testing on Testnet)'
+  approval_snapshot:
+    transfer_fee_pct: '0'
+    can_freeze: true
+    clawback: false
+    require_auth: false
+    issuer_locked: true
 - name: PLX
   currency: PLX
   issuer: rGLEgQdktoN4Be5thhk6seg1HifGPBxY5Q
-  approved: false
+  approved: true
   source: candidate from mainnet bot scan 2026-10-23 (watch-only until reviewed and
     approved)
   verdict: CAUTION
   review_summary:
   - no red flags
+  approved_on: '2026-10-23'
+  approved_note: 'Owner approved in chat 2026-10-23: ''add the seven and whatever
+    is already on our list I approve'' (mainnet trading still off; testing on Testnet)'
+  approval_snapshot:
+    transfer_fee_pct: '0'
+    can_freeze: true
+    clawback: false
+    require_auth: false
+    issuer_locked: true
 - name: POLICE
   currency: 504F4C4943450000000000000000000000000000
   issuer: rfjutsDJfakrhZUPMBe5E65S38eRZEP3yt
@@ -85,7 +139,7 @@ tokens:
     approved)
   verdict: NOT RECOMMENDED
   review_summary:
-  - 'Thin market: only about 963 XRP of liquidity against XRP (we want at least 5,000).'
+  - 'Thin market: only about 945 XRP of liquidity against XRP (we want at least 5,000).'
 - name: RLUSD
   currency: 524C555344000000000000000000000000000000
   issuer: rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De
@@ -113,17 +167,26 @@ tokens:
     approved)
   verdict: NOT RECOMMENDED
   review_summary:
-  - 'Thin market: only about 1,218 XRP of liquidity against XRP (we want at least
+  - 'Thin market: only about 1,155 XRP of liquidity against XRP (we want at least
     5,000).'
 - name: Xmen
   currency: 586D656E00000000000000000000000000000000
   issuer: rMFL2KuFPMuiujdbVGbMzNNjj5QKyd6dZf
-  approved: false
+  approved: true
   source: candidate from mainnet bot scan 2026-10-23 (watch-only until reviewed and
     approved)
   verdict: CAUTION
   review_summary:
   - no red flags
+  approved_on: '2026-10-23'
+  approved_note: 'Owner approved in chat 2026-10-23: ''add the seven and whatever
+    is already on our list I approve'' (mainnet trading still off; testing on Testnet)'
+  approval_snapshot:
+    transfer_fee_pct: '0'
+    can_freeze: true
+    clawback: false
+    require_auth: false
+    issuer_locked: true
 - name: gei
   currency: gei
   issuer: raadqNCqPHhqpb5HEMBjbfFa21YYu9GWfW
@@ -132,7 +195,7 @@ tokens:
     approved)
   verdict: NOT RECOMMENDED
   review_summary:
-  - 'Thin market: only about 3,083 XRP of liquidity against XRP (we want at least
+  - 'Thin market: only about 3,105 XRP of liquidity against XRP (we want at least
     5,000).'
 - name: "\U0001F30AJeetTide"
   currency: F09F8C8A4A656574546964650000000000000000
@@ -142,16 +205,25 @@ tokens:
     and approved)
   verdict: NOT RECOMMENDED
   review_summary:
-  - 'Thin market: only about 426 XRP of liquidity against XRP (we want at least 5,000).'
+  - 'Thin market: only about 427 XRP of liquidity against XRP (we want at least 5,000).'
 - name: DeepTide
   currency: '4465657054696465000000000000000000000000'
   issuer: rnHDzEH4xyW6u4LbXqDoX1uk36v5ovhbFi
-  approved: false
+  approved: true
   source: candidate from 6.5 h mainnet bot scan 2026-10-23 (watch-only until reviewed
     and approved)
   verdict: CAUTION
   review_summary:
   - no red flags
+  approved_on: '2026-10-23'
+  approved_note: 'Owner approved in chat 2026-10-23: ''add the seven and whatever
+    is already on our list I approve'' (mainnet trading still off; testing on Testnet)'
+  approval_snapshot:
+    transfer_fee_pct: '0'
+    can_freeze: true
+    clawback: false
+    require_auth: false
+    issuer_locked: true
 - name: mula
   currency: 6D756C6100000000000000000000000000000000
   issuer: rMULA5hkZqsu7545NPnJZfu5ghKxuRbCro
@@ -169,17 +241,17 @@ tokens:
     and approved)
   verdict: NOT RECOMMENDED
   review_summary:
-  - 'Thin market: only about 563 XRP of liquidity against XRP (we want at least 5,000).'
+  - 'Thin market: only about 501 XRP of liquidity against XRP (we want at least 5,000).'
 - name: CODED
   currency: 434F444544000000000000000000000000000000
   issuer: rnNErmg9xVmcxxNZUwivbJSH6i9GUwYPFj
   approved: false
   source: candidate from 6.5 h mainnet bot scan 2026-10-23 (watch-only until reviewed
     and approved)
-  verdict: CAUTION
+  verdict: NOT RECOMMENDED
   review_summary:
-  - Buying and immediately selling 100 XRP worth loses 3.82% - prices move a lot with
-    size.
+  - 'Thin market: only about 4,989 XRP of liquidity against XRP (we want at least
+    5,000).'
 - name: SLOPPY
   currency: 534C4F5050590000000000000000000000000000
   issuer: rpGJSnyroEUzGmphzJXR7cyb5cNrC2gjZy
@@ -188,7 +260,7 @@ tokens:
     and approved)
   verdict: NOT RECOMMENDED
   review_summary:
-  - 'Thin market: only about 383 XRP of liquidity against XRP (we want at least 5,000).'
+  - 'Thin market: only about 385 XRP of liquidity against XRP (we want at least 5,000).'
 - name: CRAP
   currency: '4352415000000000000000000000000000000000'
   issuer: rDpyFiCNn7m5Y4zqzP5W1bUUGG4SEffnom
@@ -197,7 +269,7 @@ tokens:
     and approved)
   verdict: NOT RECOMMENDED
   review_summary:
-  - 'Thin market: only about 1,608 XRP of liquidity against XRP (we want at least
+  - 'Thin market: only about 1,623 XRP of liquidity against XRP (we want at least
     5,000).'
 - name: nuked
   currency: 6E756B6564000000000000000000000000000000
@@ -207,22 +279,160 @@ tokens:
     and approved)
   verdict: NOT RECOMMENDED
   review_summary:
-  - 'Thin market: only about 616 XRP of liquidity against XRP (we want at least 5,000).'
+  - 'Thin market: only about 617 XRP of liquidity against XRP (we want at least 5,000).'
 - name: scrap
   currency: '7363726170000000000000000000000000000000'
   issuer: rGHtYnnigyuaHehWGfAdoEhkoirkGNdZzo
-  approved: false
+  approved: true
   source: candidate from 6.5 h mainnet bot scan 2026-10-23 (watch-only until reviewed
     and approved)
   verdict: CAUTION
   review_summary:
   - no red flags
+  approved_on: '2026-10-23'
+  approved_note: 'Owner approved in chat 2026-10-23: ''add the seven and whatever
+    is already on our list I approve'' (mainnet trading still off; testing on Testnet)'
+  approval_snapshot:
+    transfer_fee_pct: '0'
+    can_freeze: true
+    clawback: false
+    require_auth: false
+    issuer_locked: true
 - name: FARM
   currency: 4641524D00000000000000000000000000000000
   issuer: rPrAEfVATUNDTJm9CUa8tYeD7oJrVdEGhU
-  approved: false
+  approved: true
   source: owner asked for $Farm 2026-10-23; seen in mainnet bot scan (watch-only until
     reviewed and approved)
   verdict: CAUTION
   review_summary:
   - no red flags
+  approved_on: '2026-10-23'
+  approved_note: 'Owner approved in chat 2026-10-23: ''add the seven and whatever
+    is already on our list I approve'' (mainnet trading still off; testing on Testnet)'
+  approval_snapshot:
+    transfer_fee_pct: '0'
+    can_freeze: true
+    clawback: false
+    require_auth: false
+    issuer_locked: true
+- name: BEAR
+  currency: '4245415200000000000000000000000000000000'
+  issuer: rBEARGUAsyu7tUw53rufQzFdWmJHpJEqFW
+  approved: true
+  source: recommended by 24 h meme-token scan 2026-10-23
+  verdict: CAUTION
+  review_summary:
+  - no red flags
+  approved_on: '2026-10-23'
+  approved_note: 'Owner approved in chat 2026-10-23: ''add the seven and whatever
+    is already on our list I approve'' (mainnet trading still off; testing on Testnet)'
+  approval_snapshot:
+    transfer_fee_pct: '0'
+    can_freeze: true
+    clawback: false
+    require_auth: false
+    issuer_locked: true
+- name: TIME
+  currency: 54494D4500000000000000000000000000000000
+  issuer: rExSpmk2PAqxKRTT3mhjCrCpqVasBra5v8
+  approved: true
+  source: recommended by 24 h meme-token scan 2026-10-23
+  verdict: CAUTION
+  review_summary:
+  - Buying and immediately selling 100 XRP worth loses 3.99% - prices move a lot with
+    size.
+  approved_on: '2026-10-23'
+  approved_note: 'Owner approved in chat 2026-10-23: ''add the seven and whatever
+    is already on our list I approve'' (mainnet trading still off; testing on Testnet)'
+  approval_snapshot:
+    transfer_fee_pct: '0'
+    can_freeze: true
+    clawback: false
+    require_auth: false
+    issuer_locked: true
+- name: PROFIT
+  currency: 50524F4649540000000000000000000000000000
+  issuer: rJwLNwaBUh9a7ajk9FeeLAuA791wVe3oyg
+  approved: true
+  source: recommended by 24 h meme-token scan 2026-10-23
+  verdict: CAUTION
+  review_summary:
+  - no red flags
+  approved_on: '2026-10-23'
+  approved_note: 'Owner approved in chat 2026-10-23: ''add the seven and whatever
+    is already on our list I approve'' (mainnet trading still off; testing on Testnet)'
+  approval_snapshot:
+    transfer_fee_pct: '0'
+    can_freeze: true
+    clawback: false
+    require_auth: false
+    issuer_locked: true
+- name: ATM
+  currency: ATM
+  issuer: raDZ4t8WPXkmDfJWMLBcNZmmSHmBC523NZ
+  approved: true
+  source: recommended by 24 h meme-token scan 2026-10-23
+  verdict: CAUTION
+  review_summary:
+  - no red flags
+  approved_on: '2026-10-23'
+  approved_note: 'Owner approved in chat 2026-10-23: ''add the seven and whatever
+    is already on our list I approve'' (mainnet trading still off; testing on Testnet)'
+  approval_snapshot:
+    transfer_fee_pct: '0'
+    can_freeze: true
+    clawback: false
+    require_auth: false
+    issuer_locked: true
+- name: XPM
+  currency: XPM
+  issuer: rXPMxBeefHGxx2K7g5qmmWq3gFsgawkoa
+  approved: true
+  source: recommended by 24 h meme-token scan 2026-10-23
+  verdict: CAUTION
+  review_summary:
+  - no red flags
+  approved_on: '2026-10-23'
+  approved_note: 'Owner approved in chat 2026-10-23: ''add the seven and whatever
+    is already on our list I approve'' (mainnet trading still off; testing on Testnet)'
+  approval_snapshot:
+    transfer_fee_pct: '0'
+    can_freeze: true
+    clawback: false
+    require_auth: false
+    issuer_locked: true
+- name: GRIM
+  currency: 4752494D00000000000000000000000000000000
+  issuer: rHLRdLwXiBZSD53ZQz8ogGJz25LzNCCjSz
+  approved: true
+  source: recommended by 24 h meme-token scan 2026-10-23
+  verdict: CAUTION
+  review_summary:
+  - no red flags
+  approved_on: '2026-10-23'
+  approved_note: 'Owner approved in chat 2026-10-23: ''add the seven and whatever
+    is already on our list I approve'' (mainnet trading still off; testing on Testnet)'
+  approval_snapshot:
+    transfer_fee_pct: '0'
+    can_freeze: true
+    clawback: false
+    require_auth: false
+    issuer_locked: true
+- name: '589'
+  currency: '589'
+  issuer: rfcasq9uRbvwcmLFvc4ti3j8Qt1CYCGgHz
+  approved: true
+  source: recommended by 24 h meme-token scan 2026-10-23
+  verdict: CAUTION
+  review_summary:
+  - no red flags
+  approved_on: '2026-10-23'
+  approved_note: 'Owner approved in chat 2026-10-23: ''add the seven and whatever
+    is already on our list I approve'' (mainnet trading still off; testing on Testnet)'
+  approval_snapshot:
+    transfer_fee_pct: '0'
+    can_freeze: true
+    clawback: false
+    require_auth: false
+    issuer_locked: true
