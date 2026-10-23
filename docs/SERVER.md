@@ -30,7 +30,11 @@ sent it, so this works across machines.
 
 ## Buttons
 
-`desktop/windows/*.bat` or `desktop/mac/*.command` on your computer:
+**On your phone (what you use now):** Termux:Widget home-screen buttons from
+`phone/termux/` (install: `curl` them into `~/.shortcuts`, see chat). Plus your
+Telegram bot: `/status`, `/kill <PIN>`, `/resume <PIN>`.
+
+If you ever get a computer: `desktop/windows/*.bat` or `desktop/mac/*.command`:
 
 | Button | Does |
 |---|---|
