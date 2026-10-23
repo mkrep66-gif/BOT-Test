@@ -4,7 +4,7 @@
 # Only run this after the owner has approved in writing; quote them in the note.
 #   sudo bash deploy/approve-reviewed.sh "Owner approved in chat <date>: <their words>"
 set -euo pipefail
-NOTE="${1:?give a note quoting the owner's written approval}"
+NOTE="${1:?give a note quoting the written approval of the owner}"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 echo "Code version: $(git -C "$REPO" log -1 --format="%h %s" | cut -c1-70)"
 APP=/opt/xrplarb
