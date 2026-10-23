@@ -88,3 +88,30 @@ def test_token_held_between_the_two_payments_pays_its_transfer_fee_twice():
     pool_out = swap(e2, swap(e1, D(1)).amount_out).amount_out
     assert q.leg_outputs[1] == pool_out / D("1.002")
     assert q.amount_out == swap(e3, q.leg_outputs[1]).amount_out
+
+
+def test_loss_at_smallest_size_means_loss_at_every_size():
+    """The scanner skips the size search when the smallest trade loses money.
+    Check on many random loops (books + pools + issuer fees) that the full
+    search would never have found a profit in those cases."""
+    import random
+
+    rng = random.Random(7)
+    toks = [XRP, USD, EUR]
+    checked = 0
+    for _ in range(1500):
+        edges = []
+        for a, b in zip(toks, toks[1:] + toks[:1]):
+            amm = AmmPool(D(rng.randint(200, 20000)), D(rng.randint(200, 20000)), D(rng.choice(["0.001", "0.003", "0.01"])))
+            offers = sorted(
+                (Offer(D(rng.randint(1, 50)), D(rng.randint(1, 50))) for _ in range(rng.randint(0, 4))),
+                key=lambda o: o.price,
+            )
+            rate = D(1) if a.is_xrp else D(rng.choice(["1", "1.002", "1.01"]))
+            edges.append(Edge(a, b, offers=offers, amm=amm if rng.random() < 0.8 or not offers else None, transfer_rate_in=rate))
+        probe = quote_loop(edges, D(1))
+        if probe.filled and probe.gross_profit <= 0:
+            checked += 1
+            sized = best_size(edges, D(1), D(100), D(0))
+            assert sized is None or sized.net_profit <= 0
+    assert checked > 100

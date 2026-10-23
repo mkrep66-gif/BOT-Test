@@ -39,7 +39,9 @@ NETWORKS = {
             "https://s1.ripple.com:51234/",
             "https://s2.ripple.com:51234/",
         ],
-        "ws": ["wss://xrplcluster.com/", "wss://s1.ripple.com/", "wss://s2.ripple.com/"],
+        # Ripple's own servers first: they accept the live feed's many subscriptions;
+        # xrplcluster often answers "tooBusy" to them.
+        "ws": ["wss://s1.ripple.com/", "wss://s2.ripple.com/", "wss://xrplcluster.com/"],
         "faucet": None,
         "explorer": "https://livenet.xrpl.org/transactions/",
     },

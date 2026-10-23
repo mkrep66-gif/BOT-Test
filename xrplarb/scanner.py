@@ -10,7 +10,7 @@ from typing import List, Optional, Sequence
 
 from .amounts import ONE, ZERO, drops_to_xrp
 from .market import MarketSnapshot
-from .quote import Edge, LoopQuote, best_size, loop_marginal_rate, swap
+from .quote import Edge, LoopQuote, best_size, loop_marginal_rate, quote_loop, swap
 from .routes import Route
 
 # A Batch with two inner payments costs (2 + 2) x the per-transaction fee.
@@ -52,6 +52,7 @@ def evaluate(
     slippage_buffer: Decimal,
     max_fee_drops: int,
     fee_units: int = ATOMIC_FEE_UNITS,
+    quick_reject: bool = False,
 ) -> Optional[Opportunity]:
     """Returns None when there's no gap at all (the normal case). Returns an
     Opportunity - executable or not, with a reason - when there is a gap."""
@@ -73,6 +74,20 @@ def evaluate(
     if max_size < min_size:
         opp.reason = "not enough free XRP in the wallet for the minimum trade size"
         opp.size_xrp = max_size
+        return opp
+
+    # Each leg gives less per unit as the size grows, so a loop's profit is a
+    # concave function of size that starts at 0. If even the smallest size we
+    # would trade loses money, every larger size loses more: skip the (costly)
+    # size search. This rules out most gaps that only exist at the very top of
+    # an order book (same answers, ~50x faster). On for paper trading; the
+    # Testnet bots get it once it has proven itself there.
+    probe = quote_loop(edges, min_size) if quick_reject else None
+    if probe is not None and probe.filled and probe.gross_profit <= 0:
+        opp.size_xrp, opp.quote = min_size, probe
+        opp.gross_profit = probe.gross_profit
+        opp.net_profit = probe.gross_profit - opp.network_fee_xrp
+        opp.reason = "gap exists only at tiny size; any real trade size loses money"
         return opp
 
     sized = best_size(edges, min_size, max_size, opp.network_fee_xrp)

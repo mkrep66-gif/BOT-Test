@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS watch_scans (
 MIGRATIONS = [
     ("watch_episodes", "first_safe_profit_xrp", "TEXT"),  # profit when the gap was first seen = when a bot would fire
     ("watch_episodes", "would_trade", "INTEGER"),  # 1 if every token on the route is approved
+    ("watch_scans", "live", "INTEGER"),  # 1 = scanned from the live feed (duration = ms after ledger close)
 ]
 
 

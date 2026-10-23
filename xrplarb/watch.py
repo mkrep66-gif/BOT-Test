@@ -25,7 +25,7 @@ from .amounts import ZERO, Asset
 from .config import REPORTS_DIR, Settings, blocked_reason, load_blocklist, load_token_entries, load_token_pairs
 from .alerts import Alerter
 from .db import DB, now_iso
-from .ledgerstream import LedgerStream
+from .livefeed import LiveFeed
 from .localtime import day_start_utc, local_tz, next_day, tz_label
 from .market import MarketFeed
 from .routes import Route, build_routes
@@ -71,13 +71,19 @@ async def run_watch(settings: Settings, db: Optional[DB] = None, max_scans: Opti
     feed = MarketFeed(net, depth=settings.book_depth)
     tokens, safe = _candidate_tokens(settings.network)
     approved = _approved_keys(settings.network)
-    stream = LedgerStream(settings.ws_urls if settings.use_ledger_stream else [])
-    stream_task = asyncio.create_task(stream.run())
     alerter = Alerter(settings.network, db)
     if not tokens:
         raise SystemExit("No candidate tokens. Run `discover` first.")
     allowed = set(tokens)  # candidates minus the block list
     pairs = [(a, b) for a, b in load_token_pairs(settings.network) if a in allowed and b in allowed]
+    # Live feed: the servers push every change and we scan each ledger as it
+    # closes. If it isn't healthy, fall back to reading every market in full.
+    live = LiveFeed(net, settings.ws_urls, depth=settings.book_depth) if settings.use_ledger_stream and settings.ws_urls else None
+    live_task = None
+    if live:
+        live.configure(tokens, pairs)
+        live_task = asyncio.create_task(live.run())
+    started = last_stats = time.time()
     netname = f"{settings.network}-watch"
     open_eps: Dict[str, dict] = {}  # route key -> running episode
     routes: List[Route] = []
@@ -86,12 +92,17 @@ async def run_watch(settings: Settings, db: Optional[DB] = None, max_scans: Opti
     db.event(netname, "watch", "INFO", "start", f"watching {len(tokens)} tokens, {len(pairs)} token/token markets")
     while max_scans is None or scans < max_scans:
         t0 = time.time()
-        try:
-            snap = await feed.snapshot(tokens, pairs)
-        except Exception as e:
-            log.warning("snapshot failed: %s", e)
-            await asyncio.sleep(10)
-            continue
+        snap = await live.next_snapshot(timeout=10) if live else None
+        is_live = snap is not None
+        if snap is None and live and time.time() - started < 120:
+            continue  # the live feed is still starting up (first full read): wait for it
+        if snap is None:
+            try:
+                snap = await feed.snapshot(tokens, pairs)
+            except Exception as e:
+                log.warning("snapshot failed: %s", e)
+                await asyncio.sleep(10)
+                continue
         if time.time() - last_routes > 600:
             routes = build_routes(snap.pairs(), settings.min_hops, settings.max_hops)
             last_routes = time.time()
@@ -103,6 +114,7 @@ async def run_watch(settings: Settings, db: Optional[DB] = None, max_scans: Opti
             min_profit=settings.min_profit_xrp,
             slippage_buffer=settings.slippage_buffer,
             max_fee_drops=settings.max_network_fee_drops,
+            quick_reject=True,
         )
         seen_now: Set[str] = set()
         n_prof = 0
@@ -155,21 +167,27 @@ async def run_watch(settings: Settings, db: Optional[DB] = None, max_scans: Opti
         for key in list(open_eps):
             if key not in seen_now:
                 db.execute("UPDATE watch_episodes SET open=0 WHERE id=?", (open_eps.pop(key)["id"],))
-        dur = int((time.time() - t0) * 1000)
+        # live: time from the ledger closing to our decision; full read: the whole read + scan
+        dur = int((time.time() - (snap.taken_at if is_live else t0)) * 1000)
         db._insert(
             "watch_scans",
             dict(ts=ts, network=netname, ledger_index=snap.ledger_index, routes_checked=len(routes),
-                 profitable=n_prof, duration_ms=dur),
+                 profitable=n_prof, duration_ms=dur, live=int(is_live)),
         )
         scans += 1
         if scans % 100 == 0:
             log.info("watch: %d scans, %d routes, last scan %d ms", scans, len(routes), dur)
+        if live and time.time() - last_stats > 3600:
+            last_stats = time.time()
+            log.info("live feed: %s", live.stats)
+            if live.stats["drift"]:
+                db.event(netname, "watch", "WARN", "live-drift", f"live feed corrected itself {live.stats['drift']} time(s)")
         await maybe_send_daily(db, settings.network, alerter)
-        # next scan as soon as the next ledger closes (timer fallback)
-        if not (stream.latest and snap.ledger_index and stream.latest > snap.ledger_index):
-            await stream.wait_next(max(0.5, settings.scan_interval_seconds - (time.time() - t0)))
-    stream.stop()
-    stream_task.cancel()
+        if not is_live:  # full reads: don't hammer the servers while the live feed recovers
+            await asyncio.sleep(max(0.5, settings.scan_interval_seconds - (time.time() - t0)))
+    if live:
+        live.stop()
+        live_task.cancel()
 
 
 def watch_report(db: DB, network: str = "mainnet", out_dir: Path = REPORTS_DIR) -> Path:
@@ -300,7 +318,9 @@ def daily_report(db: DB, network: str, day: str) -> tuple[str, str]:
     start, end = day_start_utc(day), day_start_utc(next_day(day))
     eps = db.query("SELECT * FROM watch_episodes WHERE network=? AND first_seen>=? AND first_seen<?", (netname, start, end))
     scans = db.query(
-        "SELECT COUNT(*) n, AVG(duration_ms) d FROM watch_scans WHERE network=? AND ts>=? AND ts<?", (netname, start, end)
+        "SELECT COUNT(*) n, SUM(COALESCE(live, 0)) l, AVG(CASE WHEN live=1 THEN duration_ms END) ld, "
+        "AVG(CASE WHEN COALESCE(live, 0)=0 THEN duration_ms END) fd "
+        "FROM watch_scans WHERE network=? AND ts>=? AND ts<?", (netname, start, end)
     )[0]
 
     def first(e) -> Decimal:
@@ -337,7 +357,11 @@ def daily_report(db: DB, network: str, day: str) -> tuple[str, str]:
         f"- **Gaps that closed before we could act (speed):** {len(too_fast)}, worth {lost_to_speed:+.4f} XRP",
         f"- Gaps on watch-only (unapproved) tokens we'd have caught: {len(others)}, worth {other_profit:+.4f} XRP",
         f"- Gaps that stayed open suspiciously long (left out - probably not really tradeable): {len(stuck)}",
-        f"- Scans: {scans['n'] or 0}, average {((scans['d'] or 0) / 1000):.1f} s each",
+        f"- Scans: {scans['n'] or 0}"
+        + (f"; {scans['l']} on the live feed, deciding on average {(scans['ld'] or 0) / 1000:.2f} s after each ledger closed"
+           if scans["l"] else "")
+        + (f"; {(scans['n'] or 0) - (scans['l'] or 0)} full reads, average {(scans['fd'] or 0) / 1000:.1f} s each"
+           if (scans["n"] or 0) > (scans["l"] or 0) else ""),
         "",
     ]
     if best:
