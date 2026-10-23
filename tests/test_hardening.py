@@ -453,3 +453,32 @@ def test_every_transaction_is_tagged_with_this_installation():
     ex._submit_on = fake_submit_on
     run(ex.submit_tx(Payment(account="rBOT", destination="rX", amount="1")))
     assert tx_instance(sent[0].to_xrpl()) == instance_id()
+
+
+def test_server_error_pages_count_as_busy_and_failover():
+    from xrplarb.xrplnet import ServerBusy
+
+    class Down502:
+        def __init__(self):
+            self.calls = []
+
+        async def request(self, req):
+            self.calls.append(1)
+            raise ServerBusy("HTTP 502")
+
+    net = Net(["https://a/", "https://b/", "https://c/"], rate_per_server=100)
+    a, b, c = Down502(), Down502(), Srv("c")
+    net.clients = [a, b, c]
+    assert run(net.request(ServerInfo()))["server"] == "c"  # tried every server before giving up
+
+
+def test_html_502_page_becomes_server_busy():
+    import httpx
+
+    from xrplarb.xrplnet import PersistentJsonRpcClient, ServerBusy
+
+    c = PersistentJsonRpcClient("https://x/")
+    c._pool.get = lambda: httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda r: httpx.Response(502, text="<html>Bad gateway</html>")))
+    with pytest.raises(ServerBusy):
+        run(c._request_impl(ServerInfo()))

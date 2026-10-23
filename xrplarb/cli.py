@@ -524,7 +524,18 @@ def main(argv=None):
     sp.add_argument("--rounds", type=int, default=0)
 
     args = p.parse_args(argv)
-    args.fn(args)
+    try:
+        args.fn(args)
+    except Exception as e:
+        from .xrplnet import RPCError, ServerBusy
+
+        import httpx
+        from xrpl.asyncio.clients.exceptions import XRPLRequestFailureException
+
+        if isinstance(e, (RPCError, ServerBusy, XRPLRequestFailureException, httpx.HTTPError)):
+            sys.exit(f"Couldn't get an answer from the ledger servers right now ({type(e).__name__}: {str(e)[:150]}). "
+                     "Nothing was changed. Wait a minute and run the same command again.")
+        raise
 
 
 if __name__ == "__main__":

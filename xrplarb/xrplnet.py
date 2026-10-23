@@ -88,12 +88,16 @@ class PersistentJsonRpcClient(AsyncJsonRpcClient):
     async def _request_impl(self, request: Request, *, timeout: float = REQUEST_TIMEOUT) -> Response:
         http = self._pool.get()
         response = await http.post(self.url, json=request_to_json_rpc(request), timeout=timeout)
-        if response.status_code in (429, 503):
+        if response.status_code == 429 or response.status_code >= 500:
+            # overloaded, or down behind a proxy (e.g. Cloudflare 502 pages)
             raise ServerBusy(f"HTTP {response.status_code}")
         try:
             return json_to_response(response.json())
         except JSONDecodeError:
-            raise XRPLRequestFailureException({"error": response.status_code, "error_message": response.text})
+            # not JSON (usually an HTML error page) - keep the message short
+            raise XRPLRequestFailureException(
+                {"error": response.status_code, "error_message": " ".join(response.text.split())[:120]}
+            )
 
 
 class _HttpPool:
@@ -262,9 +266,10 @@ class Net:
             sv.back_off(f"says {err}")
         raise RPCError(err, result)
 
-    async def request(self, req: Request, retries: int = 3) -> Dict[str, Any]:
+    async def request(self, req: Request, retries: Optional[int] = None) -> Dict[str, Any]:
         last_exc: Optional[Exception] = None
-        for attempt in range(retries):
+        # by default, give every server a chance before giving up
+        for attempt in range(retries or max(3, len(self.servers) + 1)):
             sv = self.servers[self._order()[0]]
             try:
                 return await self._send(sv, req)
