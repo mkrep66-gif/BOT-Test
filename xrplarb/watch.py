@@ -59,7 +59,8 @@ async def run_watch(settings: Settings, db: Optional[DB] = None, max_scans: Opti
     tokens, safe = _candidate_tokens(settings.network)
     if not tokens:
         raise SystemExit("No candidate tokens. Run `discover` first.")
-    pairs = load_token_pairs(settings.network)
+    allowed = set(tokens)  # candidates minus the block list
+    pairs = [(a, b) for a, b in load_token_pairs(settings.network) if a in allowed and b in allowed]
     netname = f"{settings.network}-watch"
     open_eps: Dict[str, dict] = {}  # route key -> running episode
     routes: List[Route] = []

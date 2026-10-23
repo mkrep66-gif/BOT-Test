@@ -551,3 +551,16 @@ def test_emoji_token_names_decode():
     from xrplarb.amounts import currency_symbol
 
     assert currency_symbol("🌊JeetTide".encode().hex().upper().ljust(40, "0")) == "🌊JeetTide"
+
+
+def test_watch_skips_blocked_tokens_and_their_markets(cfgdir, monkeypatch):
+    import xrplarb.watch as watch
+
+    monkeypatch.setattr(watch, "load_token_entries", cfgdir.load_token_entries)
+    monkeypatch.setattr(watch, "load_blocklist", cfgdir.load_blocklist)
+    fz = "FUZZY".encode().hex().upper().ljust(40, "0")
+    cfgdir.save_tokens("mainnet", [{"name": "FUZZY", "currency": fz, "issuer": "rF", "approved": False},
+                                   {"name": "ARMY", "currency": "ARM", "issuer": "rA", "approved": False}])
+    cfgdir.save_blocklist([{"symbol": "FUZZY"}])
+    tokens, _ = watch._candidate_tokens("mainnet")
+    assert [t.currency for t in tokens] == ["ARM"]
