@@ -240,3 +240,19 @@ def test_inner_results_retries_while_server_catches_up(monkeypatch):
     ex.submit_tx, ex.last_ledger = submitted, last_ledger
     res = asyncio.run(ex.execute_atomic(_opp(), 48))
     assert not res.ok and res.result_code.startswith("inner-unknown:lgrIdxMalformed")
+
+
+def test_auction_slot_discount_only_when_it_covers_all_our_bots():
+    import time as _t
+
+    from xrplarb.market import amm_to_pool, slot_covers
+
+    future = int(_t.time() - 946684800 + 3600)
+    amm = {"amount": "1000000000", "amount2": {"currency": "USD", "issuer": ISS_A, "value": "500"},
+           "trading_fee": 500, "auction_slot": {"account": "rB1", "discounted_fee": 50, "expiration": future,
+                                                "auth_accounts": [{"account": "rB2"}, {"account": "rB3"}]}}
+    assert amm_to_pool(amm, XRP, ["rB1", "rB2", "rB3"]).fee == D("0.0005")   # covered: 0.05%
+    assert amm_to_pool(amm, XRP, ["rB1", "rB2", "rB9"]).fee == D("0.005")    # rB9 not covered: full fee
+    assert amm_to_pool(amm, XRP).fee == D("0.005")
+    expired = {**amm, "auction_slot": {**amm["auction_slot"], "expiration": "2025-01-24T03:22:46+0000"}}
+    assert not slot_covers(expired, ["rB1"])

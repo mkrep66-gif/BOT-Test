@@ -121,6 +121,7 @@ class Supervisor:
             await self.alerter.send("Bots NOT started: wallets in use elsewhere", msg, force=True)
             raise SystemExit(msg)
 
+        self.feed.our_accounts = [wallets[n]["address"] for n in names]
         snap = await self.feed.snapshot(self.tokens, self.token_pairs)
         routes = build_routes(snap.pairs(), s.min_hops, s.max_hops)
         groups = partition_routes(routes, s.num_bots)

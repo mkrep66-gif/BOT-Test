@@ -39,12 +39,45 @@ def offers_to_edge_offers(raw_offers: List[dict], exclude_owner: Optional[str] =
     return out
 
 
-def amm_to_pool(amm: dict, src: Asset) -> Optional[AmmPool]:
+RIPPLE_EPOCH = 946684800
+
+
+def _slot_expiry_unix(exp) -> float:
+    """amm_info gives the slot's expiry as an ISO time (API v2) or as
+    seconds since 2000-01-01 (API v1)."""
+    if exp is None or exp == "":
+        return 0.0
+    if isinstance(exp, (int, float)) or str(exp).isdigit():
+        return float(exp) + RIPPLE_EPOCH
+    from datetime import datetime
+
+    return datetime.fromisoformat(str(exp).replace("Z", "+00:00")).timestamp()
+
+
+def slot_covers(amm: dict, accounts: Iterable[str], now: Optional[float] = None) -> bool:
+    """True if this pool's auction slot is live and covers ALL our accounts
+    (the holder plus up to 4 authorised accounts pay the discounted fee).
+    All, not any: a bot that isn't covered must not count on the discount."""
+    accounts = set(accounts)
+    s = amm.get("auction_slot") or {}
+    if not s or not accounts:
+        return False
+    if _slot_expiry_unix(s.get("expiration")) <= (now or time.time()):
+        return False
+    covered = {s.get("account")}
+    for x in s.get("auth_accounts") or []:
+        covered.add(x.get("account") or (x.get("AuthAccount") or {}).get("Account"))
+    return accounts <= covered
+
+
+def amm_to_pool(amm: dict, src: Asset, our_accounts: Iterable[str] = ()) -> Optional[AmmPool]:
     a1, v1 = parse_amount(amm["amount"])
     a2, v2 = parse_amount(amm["amount2"])
     if amm.get("asset_frozen") or amm.get("asset2_frozen"):
         return None
     fee = Decimal(int(amm.get("trading_fee", 0))) / Decimal(100_000)
+    if slot_covers(amm, our_accounts):
+        fee = Decimal(int((amm.get("auction_slot") or {}).get("discounted_fee", 0))) / Decimal(100_000)
     if a1 == src:
         return AmmPool(pool_in=v1, pool_out=v2, fee=fee, account=amm.get("account", ""))
     if a2 == src:
@@ -82,9 +115,12 @@ class MarketSnapshot:
 class MarketFeed:
     """Fetches books + AMMs for the configured pairs."""
 
-    def __init__(self, net: Net, depth: int = 30):
+    def __init__(self, net: Net, depth: int = 30, our_accounts: Iterable[str] = ()):
         self.net = net
         self.depth = depth
+        # our bot wallets: pools whose auction slot covers all of them are
+        # priced at the slot's discounted fee
+        self.our_accounts = list(our_accounts)
         self._rate_cache: Dict[str, Tuple[float, Decimal]] = {}
         self.latest: Optional[MarketSnapshot] = None
 
@@ -151,7 +187,7 @@ class MarketFeed:
                     raw = []
                 pool = None
                 if amm and not isinstance(amm, Exception):
-                    pool = amm_to_pool(amm, src)
+                    pool = amm_to_pool(amm, src, self.our_accounts)
                 elif isinstance(amm, Exception):
                     snap.fetch_errors += 1
                 rate = ONE if src.is_xrp else snap.transfer_rates.get(src.issuer, ONE)
