@@ -491,3 +491,19 @@ def test_hidden_input_strips_phone_paste_markers(monkeypatch):
 
     monkeypatch.setattr(getpass, "getpass", lambda prompt="": "\x1b[200~123456:ABCdefGHIjklMNOpqrSTUvwxYZ0123456789ab\x1b[201~\n")
     assert cli.ask_secret("x") == "123456:ABCdefGHIjklMNOpqrSTUvwxYZ0123456789ab"
+
+
+def test_block_by_name_catches_every_issuer_and_lookalike_case(cfgdir):
+    cfgdir.save_blocklist([{"symbol": "BCHAMP", "reason": "owner: never trade BCHAMP"}])
+    hexcode = "BCHAMP".encode().hex().upper().ljust(40, "0")
+    assert cfgdir.blocked_reason(Asset(hexcode, "rAnyIssuer1")) == "owner: never trade BCHAMP"
+    assert cfgdir.blocked_reason(Asset("bchamp".encode().hex().upper().ljust(40, "0"), "rOther")) is not None
+    assert cfgdir.blocked_reason(Asset("BCH", "rAnyIssuer1")) is None
+    assert cfgdir.blocked_reason(Asset("CHAMP".encode().hex().upper().ljust(40, "0"), "rX")) is None
+
+
+def test_cli_blocks_by_name(cfgdir):
+    from xrplarb import cli
+
+    cli.main(["tokens-block", "BCHAMP", "--reason", "owner said never"])
+    assert cfgdir.load_blocklist()[0]["symbol"] == "BCHAMP"

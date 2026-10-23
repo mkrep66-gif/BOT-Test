@@ -182,7 +182,10 @@ def load_blocklist() -> List[Dict[str, Any]]:
     if not p.exists():
         return []
     raw = yaml.safe_load(p.read_text()) or {}
-    return [e for e in (raw.get("blocked") or []) if isinstance(e, dict) and (e.get("token") or e.get("issuer"))]
+    return [
+        e for e in (raw.get("blocked") or [])
+        if isinstance(e, dict) and (e.get("token") or e.get("issuer") or e.get("symbol"))
+    ]
 
 
 def save_blocklist(entries: List[Dict[str, Any]]) -> None:
@@ -190,6 +193,7 @@ def save_blocklist(entries: List[Dict[str, Any]]) -> None:
         "# Tokens the bots must NEVER trade, on any network - even if approved.\n"
         "# Add one with:   python -m xrplarb tokens-block CURRENCY.ISSUER --reason \"...\"\n"
         "# or block every token from an issuer:   python -m xrplarb tokens-block rISSUER\n"
+        "# or block a name from ANY issuer (copycats too):   python -m xrplarb tokens-block NAME\n"
         "# Running bots pick up changes within a few seconds.\n"
     )
     blocklist_path().write_text(header + yaml.safe_dump({"blocked": entries}, sort_keys=False))
@@ -197,12 +201,17 @@ def save_blocklist(entries: List[Dict[str, Any]]) -> None:
 
 def blocked_reason(asset: Asset, entries: Optional[List[Dict[str, Any]]] = None) -> Optional[str]:
     """Why this token is blocked, or None. Matches CURRENCY.ISSUER (the
-    currency as stored or as its readable symbol) or a blocked issuer."""
+    currency as stored or as its readable symbol), a blocked issuer, or a
+    blocked name from any issuer (case-insensitive, so look-alikes such as
+    "bchamp" are caught too)."""
     if asset.is_xrp:
         return None
     for e in load_blocklist() if entries is None else entries:
         reason = e.get("reason") or "on your block list"
         if e.get("issuer") and e["issuer"] == asset.issuer:
+            return reason
+        name = str(e.get("symbol") or "").strip().upper()
+        if name and name in (asset.symbol.strip().upper(), asset.currency.upper()):
             return reason
         tok = str(e.get("token") or "")
         if "." in tok:

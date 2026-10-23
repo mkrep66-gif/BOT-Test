@@ -184,10 +184,17 @@ def cmd_tokens_approve(args, approve=True):
 
 
 def cmd_tokens_block(args, block=True):
+    import re
+
     target = args.target.strip()
-    if "." not in target and not target.startswith("r"):
-        sys.exit("Give CURRENCY.ISSUER (one token) or an issuer address starting with r (all its tokens).")
-    key = "token" if "." in target else "issuer"
+    if "." in target:
+        key = "token"  # one token: CURRENCY.ISSUER
+    elif re.fullmatch(r"r[1-9A-HJ-NP-Za-km-z]{24,34}", target):
+        key = "issuer"  # every token from this issuer
+    elif 3 <= len(target) <= 40:
+        key = "symbol"  # this name from any issuer
+    else:
+        sys.exit("Give a token name (e.g. BCHAMP), CURRENCY.ISSUER, or an issuer address starting with r.")
     entries = [e for e in load_blocklist() if e.get(key) != target]
     if block:
         entries.append({key: target, "reason": args.reason or "blocked by owner", "blocked_on": today_local()})
@@ -205,7 +212,7 @@ def cmd_tokens_blocked(args):
     if not entries:
         print("Block list is empty.")
     for e in entries:
-        what = e.get("token") or f"every token from {e.get('issuer')}"
+        what = e.get("token") or (f"{e['symbol']} from any issuer" if e.get("symbol") else f"every token from {e.get('issuer')}")
         print(f"  {what}  - {e.get('reason', '')} (since {e.get('blocked_on', '?')})")
 
 

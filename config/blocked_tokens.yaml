@@ -1,0 +1,9 @@
+# Tokens the bots must NEVER trade, on any network - even if approved.
+# Add one with:   python -m xrplarb tokens-block CURRENCY.ISSUER --reason "..."
+# or block every token from an issuer:   python -m xrplarb tokens-block rISSUER
+# or block a name from ANY issuer (copycats too):   python -m xrplarb tokens-block NAME
+# Running bots pick up changes within a few seconds.
+blocked:
+- symbol: BCHAMP
+  reason: 'Owner''s instruction 2026-10-23: never trade BCHAMP (any issuer)'
+  blocked_on: '2026-10-23'
