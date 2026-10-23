@@ -5,7 +5,7 @@ set -euo pipefail
 
 APP=/opt/xrplarb
 # Testnet only: lab noise keeps the practice market moving.
-SERVICES=(xrplarb-bots xrplarb-labnoise xrplarb-dashboard)
+SERVICES=(xrplarb-bots xrplarb-labnoise xrplarb-dashboard xrplarb-watch)
 xr() { (cd "$APP" && sudo -u xrplarb "$APP/.venv/bin/python" -m xrplarb "$@"); }
 
 case "${1:-status}" in

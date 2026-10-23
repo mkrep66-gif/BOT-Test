@@ -121,6 +121,9 @@ class MarketFeed:
         # our bot wallets: pools whose auction slot covers all of them are
         # priced at the slot's discounted fee
         self.our_accounts = list(our_accounts)
+        # pair -> scans left before re-checking order books that were empty
+        self._empty_books: Dict[Tuple[str, str], int] = {}
+        self.empty_book_recheck = 10
         self._rate_cache: Dict[str, Tuple[float, Decimal]] = {}
         self.latest: Optional[MarketSnapshot] = None
 
@@ -170,13 +173,27 @@ class MarketFeed:
             if not isinstance(r, Decimal):
                 snap.fetch_errors += 1
 
+        async def no_offers():
+            return []
+
         async def fetch_pair(a: Asset, b: Asset):
+            # Most meme markets are AMM-only. A pair whose books were empty last
+            # time isn't asked for books again until its countdown runs out
+            # (cuts requests by ~2/3). Skipping a book can only make our price
+            # estimate worse than reality, never better, so it's safe.
+            key = (a.key, b.key)
+            skip = self._empty_books.get(key, 0) > 0
+            if skip:
+                self._empty_books[key] -= 1
             res = await asyncio.gather(
-                self.net.book_offers(gets=b, pays=a, limit=self.depth),  # we give a, get b
-                self.net.book_offers(gets=a, pays=b, limit=self.depth),  # we give b, get a
+                no_offers() if skip else self.net.book_offers(gets=b, pays=a, limit=self.depth),  # we give a, get b
+                no_offers() if skip else self.net.book_offers(gets=a, pays=b, limit=self.depth),  # we give b, get a
                 self.net.amm_info(a, b),
                 return_exceptions=True,
             )
+            if not skip:
+                empty = all(isinstance(r, list) and not r for r in res[:2])
+                self._empty_books[key] = self.empty_book_recheck if empty else 0
             return a, b, res
 
         results = await asyncio.gather(*(fetch_pair(a, b) for a, b in unordered))

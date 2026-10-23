@@ -35,6 +35,6 @@ cp deploy/xrplarb-*.service /etc/systemd/system/
 install -m 755 deploy/xrplarb-ctl /usr/local/bin/xrplarb-ctl
 systemctl daemon-reload
 # On an update, restart whatever is running so the new code takes effect.
-systemctl try-restart xrplarb-bots xrplarb-labnoise xrplarb-dashboard 2>/dev/null || true
+systemctl try-restart xrplarb-bots xrplarb-labnoise xrplarb-dashboard xrplarb-watch 2>/dev/null || true
 echo
 echo "Installed. (Anything already running was restarted on the new code; nothing new was started.)"

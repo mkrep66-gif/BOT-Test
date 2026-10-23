@@ -256,3 +256,33 @@ def test_auction_slot_discount_only_when_it_covers_all_our_bots():
     assert amm_to_pool(amm, XRP).fee == D("0.005")
     expired = {**amm, "auction_slot": {**amm["auction_slot"], "expiration": "2025-01-24T03:22:46+0000"}}
     assert not slot_covers(expired, ["rB1"])
+
+
+def test_empty_order_books_are_rechecked_only_every_nth_scan():
+    import asyncio
+
+    from xrplarb.market import MarketFeed
+
+    class N:
+        def __init__(self):
+            self.books = 0
+
+        async def server_state(self):
+            return {"ledger_index": 1, "base_fee_drops": 10, "load_factor": 1, "reserve_base_xrp": 1, "reserve_inc_xrp": 0.2}
+
+        async def account_info(self, a):
+            return {}
+
+        async def book_offers(self, gets, pays, limit):
+            self.books += 1
+            return []
+
+        async def amm_info(self, a, b):
+            return None
+
+    net = N()
+    feed = MarketFeed(net)
+    feed.empty_book_recheck = 3
+    for _ in range(5):
+        asyncio.run(feed.snapshot([A]))
+    assert net.books == 2 * 2  # scan 1 asks (empty) -> skip 3 scans -> scan 5 asks again
