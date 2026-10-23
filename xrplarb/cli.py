@@ -220,10 +220,24 @@ def cmd_tokens_merge(args):
     src = yaml.safe_load(Path(args.file).read_text()) or {}
     have = {(e["currency"], e["issuer"]): e for e in load_token_entries(s.network)}
     blocked = load_blocklist()
-    added = []
+    added, rereviewed, revoked = [], [], []
     for e in src.get("tokens") or []:
         key = (e["currency"], e["issuer"])
-        if key in have or blocked_reason(Asset(*key), blocked):
+        if blocked_reason(Asset(*key), blocked):
+            continue
+        if key in have:
+            # Keep this machine's approval, but take the newer safety review: a
+            # stale "CAUTION" must never let a now-NOT RECOMMENDED token through.
+            mine = have[key]
+            if "verdict" in e and e["verdict"] != mine.get("verdict"):
+                rereviewed.append(f"{mine.get('name', e['currency'])} ({mine.get('verdict')} -> {e['verdict']})")
+                mine["verdict"] = e["verdict"]
+                if mine.get("approved") and e["verdict"] == "NOT RECOMMENDED":
+                    mine["approved"] = False
+                    mine["approved_on"] = None
+                    revoked.append(mine.get("name", e["currency"]))
+            if "review_summary" in e:
+                mine["review_summary"] = e["review_summary"]
             continue
         have[key] = {**{k: v for k, v in e.items() if not k.startswith("approv")}, "approved": False}
         added.append(e.get("name", e["currency"]))
@@ -241,6 +255,10 @@ def cmd_tokens_merge(args):
     print(f"Added {len(added)} new candidate(s), all unapproved: {', '.join(added) or 'none'}. "
           f"{len(have)} on the {s.network} list; {sum(1 for e in have.values() if e.get('approved'))} approved."
           + (f" {n_pairs} markets." if args.markets else ""))
+    if rereviewed:
+        print("Updated safety review: " + ", ".join(rereviewed) + ".")
+    if revoked:
+        print("Approval removed (now NOT RECOMMENDED): " + ", ".join(revoked) + ".")
 
 
 def cmd_tokens_blocked(args):

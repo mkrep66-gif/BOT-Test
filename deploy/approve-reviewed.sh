@@ -6,6 +6,7 @@
 set -euo pipefail
 NOTE="${1:?give a note quoting the owner's written approval}"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
+echo "Code version: $(git -C "$REPO" log -1 --format="%h %s" | cut -c1-70)"
 APP=/opt/xrplarb
 cd "$APP"
 .venv/bin/python -m xrplarb tokens-merge "$REPO/config/approved_tokens.mainnet.yaml" \

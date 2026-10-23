@@ -547,6 +547,29 @@ def test_tokens_merge_adds_only_new_unapproved_and_skips_blocked(cfgdir, tmp_pat
     assert "BCHAMP" not in got                       # block list respected
 
 
+def test_tokens_merge_takes_newer_review_and_never_keeps_a_failed_token_approved(cfgdir, tmp_path):
+    import yaml
+
+    from xrplarb import cli
+
+    cfgdir.save_tokens("mainnet", [
+        {"name": "CODED", "currency": "CODED", "issuer": "rC", "approved": False, "verdict": "CAUTION"},
+        {"name": "THIN", "currency": "THIN", "issuer": "rT", "approved": True, "verdict": "CAUTION"},
+        {"name": "GOOD", "currency": "GOOD", "issuer": "rG", "approved": True, "verdict": "CAUTION"},
+    ])
+    src = tmp_path / "theirs.yaml"
+    src.write_text(yaml.safe_dump({"tokens": [
+        {"name": "CODED", "currency": "CODED", "issuer": "rC", "verdict": "NOT RECOMMENDED", "review_summary": ["thin"]},
+        {"name": "THIN", "currency": "THIN", "issuer": "rT", "verdict": "NOT RECOMMENDED"},
+        {"name": "GOOD", "currency": "GOOD", "issuer": "rG", "verdict": "OK", "approved": False},
+    ]}))
+    cli.main(["tokens-merge", str(src), "--network", "mainnet"])
+    got = {e["name"]: e for e in cfgdir.load_token_entries("mainnet")}
+    assert got["CODED"]["verdict"] == "NOT RECOMMENDED" and got["CODED"]["review_summary"] == ["thin"]
+    assert got["THIN"]["approved"] is False          # failed the newer review -> approval removed
+    assert got["GOOD"]["approved"] is True and got["GOOD"]["verdict"] == "OK"   # approval kept
+
+
 def test_emoji_token_names_decode():
     from xrplarb.amounts import currency_symbol
 
