@@ -326,16 +326,31 @@ def cmd_alerts_setup(args):
         if not re.fullmatch(r"\d{5,}:[A-Za-z0-9_-]{30,}", token):
             sys.exit("That doesn't look like a bot token (it should be numbers, a colon, then about 35 letters). "
                      "Copy it again from BotFather and re-run this command.")
-        input("Now send any message to your bot in Telegram, then press Enter here...")
+        import time as _t
+
+        api = f"https://api.telegram.org/bot{token}"
         try:
-            r = httpx.get(f"https://api.telegram.org/bot{token}/getUpdates", timeout=20).json()
+            me = httpx.get(f"{api}/getMe", timeout=20).json()
         except httpx.HTTPError as e:
             sys.exit(f"Couldn't reach Telegram ({type(e).__name__}). Check the server's internet and try again.")
-        if not r.get("ok"):
+        if not me.get("ok"):
             sys.exit("Telegram didn't accept that token. Copy it again from BotFather and re-run this command.")
-        chats = {str(u["message"]["chat"]["id"]) for u in r.get("result", []) if "message" in u}
+        httpx.post(f"{api}/deleteWebhook", timeout=20)  # getUpdates doesn't work while a webhook is set
+        user = me["result"].get("username", "")
+        print(f"\nToken OK - your bot is @{user}")
+        print(f"Now, in the Telegram app on your phone: open https://t.me/{user}")
+        print("(or search for @" + user + "), tap START, then send it any message, e.g. hi")
+        print("Waiting for your message (up to 3 minutes)...")
+        chats: set = set()
+        deadline = _t.time() + 180
+        while _t.time() < deadline and not chats:
+            r = httpx.get(f"{api}/getUpdates", params={"timeout": 20}, timeout=30).json()
+            chats = {str(u["message"]["chat"]["id"]) for u in r.get("result", []) if "message" in u}
         if len(chats) != 1:
-            sys.exit(f"Expected exactly one chat to have messaged the bot, found {len(chats)}. Try again.")
+            sys.exit("No message reached the bot in 3 minutes. Make sure you message @" + user +
+                     " (not BotFather), then run this command again." if not chats else
+                     "More than one person messaged the bot; only you should. Run this command again.")
+        print("Got your message.")
         pin = ask_secret("Choose a 4-8 digit PIN for /kill and /resume: ")
         if not (pin.isdigit() and 4 <= len(pin) <= 8):
             sys.exit("PIN must be 4-8 digits.")
