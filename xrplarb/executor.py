@@ -224,10 +224,25 @@ class Executor:
                     return r.result
                 return {**base, "tx_json": {"Fee": "0"}, "meta": {"TransactionResult": f"expired({prelim})"}}
 
+    INNER_LOOKUP_TRIES = 5
+
     async def _inner_results(self, batch_hash: str, ledger_index: int) -> List[Dict[str, Any]]:
-        r = await self.net.request(
-            AccountTx(account=self.address, ledger_index_min=ledger_index, ledger_index_max=ledger_index, limit=50)
-        )
+        # Ask the server that just confirmed the batch: another server can be a
+        # ledger behind and answer lgrIdxMalformed / lgrIdxsInvalid (seen on the
+        # server, where reads are spread across Testnet servers).
+        client = await self.net.working_client()
+        req = AccountTx(account=self.address, ledger_index_min=ledger_index, ledger_index_max=ledger_index, limit=50)
+        for attempt in range(self.INNER_LOOKUP_TRIES):
+            resp = await client.request(req)
+            if resp.is_successful():
+                break
+            err = resp.result.get("error", "unknown")
+            if err not in ("lgrIdxMalformed", "lgrIdxsInvalid", "lgrNotFound", "tooBusy", "slowDown"):
+                raise RPCError(err, resp.result)
+            await asyncio.sleep(1.0 + attempt)
+        else:
+            raise RPCError(resp.result.get("error", "unknown"), resp.result)
+        r = resp.result
         found = []
         for entry in r.get("transactions", []):
             tx = _tx_fields(entry)
@@ -256,7 +271,15 @@ class Executor:
         if res.result_code != "tesSUCCESS" or not res.ledger_index:
             res.note = "batch not applied"
             return res
-        inner = await self._inner_results(res.tx_hash, res.ledger_index)
+        try:
+            inner = await self._inner_results(res.tx_hash, res.ledger_index)
+        except Exception as e:
+            # The batch is confirmed but we can't read its parts right now.
+            # Don't guess: wallet balances are re-read after every trade, so
+            # profit and loss stay right; only this row lacks its details.
+            res.result_code = f"inner-unknown:{getattr(e, 'error', type(e).__name__)}"
+            res.note = "batch confirmed, but its details couldn't be read; outcome taken from wallet balances"
+            return res
         codes = [i["meta"].get("TransactionResult") for i in inner]
         if len(inner) != 2 or any(c != "tesSUCCESS" for c in codes):
             # All-or-nothing: if the inner payments didn't both apply, none applied.

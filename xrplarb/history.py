@@ -122,6 +122,8 @@ class Review:
 
 def _no_fill_reason(code: str) -> str:
     code = code or ""
+    if code.startswith("inner-unknown"):
+        return "confirmed, but its details couldn't be read (profit still counted via wallet balances)"
     if code.startswith("batch-cancelled"):
         return "price moved or someone else took the gap first (ledger cancelled the loop)"
     if code.startswith("expired") or code.startswith("timeout"):

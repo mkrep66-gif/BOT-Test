@@ -106,9 +106,11 @@ def test_inner_results_reads_parent_batch_id_from_meta():
 
     from xrplarb.executor import Executor
 
-    class FakeNet:
+    from xrpl.models.response import Response, ResponseStatus
+
+    class FakeClient:
         async def request(self, req):
-            return {
+            return Response(status=ResponseStatus.SUCCESS, result={
                 "transactions": [
                     {"tx": {"TransactionType": "Batch", "hash": "BB"}, "meta": {"TransactionResult": "tesSUCCESS"}},
                     {"tx": {"TransactionType": "Payment", "hash": "P1"},
@@ -118,7 +120,11 @@ def test_inner_results_reads_parent_batch_id_from_meta():
                     {"tx": {"TransactionType": "Payment", "hash": "X"},
                      "meta": {"TransactionResult": "tesSUCCESS", "ParentBatchID": "OTHER"}},
                 ]
-            }
+            })
+
+    class FakeNet:
+        async def working_client(self):
+            return FakeClient()
 
     class FakeWallet:
         classic_address = ME
@@ -181,3 +187,56 @@ def test_first_payment_uses_only_our_route():
     assert p2.has_flag(PaymentFlag.TF_PARTIAL_PAYMENT)
     b = build_atomic_batch(ME, _opp(), 40)
     assert all(t.has_flag(PaymentFlag.TF_NO_RIPPLE_DIRECT) for t in b.raw_transactions[:1])
+
+
+
+def test_inner_results_retries_while_server_catches_up(monkeypatch):
+    # Seen on the server: lgrIdxMalformed right after the batch validated.
+    import asyncio
+
+    from xrpl.models.response import Response, ResponseStatus
+
+    import xrplarb.executor as ex_mod
+    from xrplarb.executor import ExecResult, Executor
+
+    async def no_sleep(_):
+        pass
+
+    monkeypatch.setattr(ex_mod.asyncio, "sleep", no_sleep)
+    answers = [{"error": "lgrIdxMalformed"}, {"error": "lgrIdxMalformed"}, {"transactions": []}]
+
+    class C:
+        async def request(self, req):
+            a = answers.pop(0)
+            return Response(status=ResponseStatus.ERROR if "error" in a else ResponseStatus.SUCCESS, result=a)
+
+    class N:
+        async def working_client(self):
+            return C()
+
+    class W:
+        classic_address = ME
+
+    assert asyncio.run(Executor(N(), W())._inner_results("BB", 5)) == []
+    assert not answers
+
+    # and if it never catches up, the trade is recorded as unknown - no crash
+    class Never:
+        async def request(self, req):
+            return Response(status=ResponseStatus.ERROR, result={"error": "lgrIdxMalformed"})
+
+    class N2:
+        async def working_client(self):
+            return Never()
+
+    ex = Executor(N2(), W())
+
+    async def submitted(tx):
+        return {"hash": "BB", "ledger_index": 5, "tx_json": {"Fee": "48"}, "meta": {"TransactionResult": "tesSUCCESS"}}
+
+    async def last_ledger():
+        return 9
+
+    ex.submit_tx, ex.last_ledger = submitted, last_ledger
+    res = asyncio.run(ex.execute_atomic(_opp(), 48))
+    assert not res.ok and res.result_code.startswith("inner-unknown:lgrIdxMalformed")
