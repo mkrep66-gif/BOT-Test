@@ -151,3 +151,11 @@ def test_daily_report_is_sent_once_per_day(tmp_path, monkeypatch):
     for _ in range(3):
         asyncio.run(w.maybe_send_daily(db, "mainnet", A()))
     assert len(sent) == 1 and "would-be trades" in sent[0]
+
+
+def test_telegram_paper_command_summarises_today(env):
+    from xrplarb.db import DB
+    from xrplarb.supervisor import paper_summary
+
+    out = paper_summary(DB())
+    assert out.startswith("Paper trading today") and "Would-be trades: 0" in out and "**" not in out

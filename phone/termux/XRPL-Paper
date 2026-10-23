@@ -1,0 +1,4 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# Today's mainnet paper-trading results (read-only, no keys, no XRP).
+ssh -o ServerAliveInterval=15 botadmin@157.245.255.65 'echo "Paper trading: $(systemctl is-active xrplarb-watch)"; cd /opt/xrplarb && sudo -u xrplarb .venv/bin/python -m xrplarb paper-report --network mainnet --day "$(TZ=America/New_York date +%F)" | grep -E "^- |No profitable" | sed "s/\*\*//g"'
+read -n 1 -s -r -p "Tap any key to close"

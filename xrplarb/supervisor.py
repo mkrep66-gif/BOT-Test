@@ -39,6 +39,19 @@ NET_HEALTH_LOG_SECONDS = 3600
 BLOCKED_TAG = "on your block list"
 
 
+def paper_summary(db: DB) -> str:
+    """Today's mainnet paper trading (Telegram /paper): the report's key lines."""
+    from .localtime import today_local
+    from .watch import daily_report
+
+    try:
+        text, _ = daily_report(db, "mainnet", today_local())
+    except Exception as e:
+        return f"Paper report unavailable: {e}"
+    lines = [ln[2:].replace("**", "") for ln in text.splitlines() if ln.startswith("- ")]
+    return "Paper trading today (mainnet, no XRP spent):\n" + "\n".join(lines)
+
+
 class Supervisor:
     def __init__(self, settings: Settings, db: Optional[DB] = None):
         self.s = settings
@@ -372,7 +385,9 @@ class Supervisor:
             self.db.clear_flag("kill")
             self.db.set_flag("resume", "1")
             return "Resuming."
-        return "Commands: /status, /kill <pin>, /resume <pin>"
+        if cmd == "/paper":
+            return paper_summary(self.db)
+        return "Commands: /status, /paper, /kill <pin>, /resume <pin>"
 
     async def run(self) -> None:
         lock = RunLock(self.s.network)
