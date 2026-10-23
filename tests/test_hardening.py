@@ -507,3 +507,21 @@ def test_cli_blocks_by_name(cfgdir):
 
     cli.main(["tokens-block", "BCHAMP", "--reason", "owner said never"])
     assert cfgdir.load_blocklist()[0]["symbol"] == "BCHAMP"
+
+
+def test_ledger_stream_wakes_on_close_and_times_out_otherwise():
+    from xrplarb.ledgerstream import LedgerStream
+
+    async def go():
+        s = LedgerStream([])
+        assert await s.wait_next(0.05) is False  # nothing closes -> timer fallback
+
+        async def close_soon():
+            await asyncio.sleep(0.05)
+            s.latest = 7
+            s._event.set()
+
+        asyncio.ensure_future(close_soon())
+        return await s.wait_next(2)
+
+    assert run(go()) is True

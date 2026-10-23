@@ -26,6 +26,7 @@ from .market import MarketFeed, MarketSnapshot
 from .redact import register_secrets
 from .routes import build_routes, partition_routes
 from .instance import LOOKBACK_S, RunLock, check_wallet, instance_id
+from .ledgerstream import LedgerStream
 from .tokens import TokenReport, assess_issuer
 from .wallets import bot_name, load_wallet
 from .xrplnet import Net
@@ -55,6 +56,7 @@ class Supervisor:
         self._crashes: Dict[str, List[float]] = {}
         self._disabled_tokens: Dict[str, str] = {}
         self._blocklist_mtime: Optional[float] = None
+        self.stream = LedgerStream(settings.ws_urls if settings.use_ledger_stream else [])
 
     # ---- startup -------------------------------------------------------------
     async def setup(self) -> None:
@@ -203,7 +205,15 @@ class Supervisor:
                 for b in self.bots:
                     if not b.busy and not self._bot_dead(b):
                         asyncio.create_task(self._housekeeping(b, snap))
-            await asyncio.sleep(max(0.2, self.s.scan_interval_seconds - (time.time() - t0)))
+            # Scan again as soon as the next ledger closes (live feed); fall back
+            # to the timer if the feed is down. If a newer ledger already
+            # closed while we were scanning, go straight away.
+            if self.stream.latest and snap.ledger_index and self.stream.latest > snap.ledger_index:
+                await asyncio.sleep(0)
+            elif not await self.stream.wait_next(max(0.05, self.s.scan_interval_seconds - (time.time() - t0))):
+                pass  # timed out: timer fallback
+            else:
+                await asyncio.sleep(0.15)  # let the closed ledger become 'validated' on our servers
 
     def log_net_health(self) -> None:
         """Hourly line per server for the weekly review: requests, failures and
@@ -383,6 +393,7 @@ class Supervisor:
         await self.alerter.send("Bots started", f"{len(self.bots)} bots on {self.s.network}", force=True)
         tasks = [
             asyncio.create_task(self.market_loop()),
+            asyncio.create_task(self.stream.run()),
             asyncio.create_task(self.control_loop()),
             asyncio.create_task(self.token_recheck_loop()),
             asyncio.create_task(self.alerter.poll_commands(self.telegram_handler)),

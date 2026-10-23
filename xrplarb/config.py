@@ -28,6 +28,8 @@ NETWORKS = {
             "https://testnet.xrpl-labs.com/",
             "https://clio.altnet.rippletest.net:51234/",
         ],
+        # live "ledger closed" feeds (WebSocket), first that answers is used
+        "ws": ["wss://testnet.xrpl-labs.com/", "wss://s.altnet.rippletest.net:51233/"],
         "faucet": "faucet.altnet.rippletest.net",
         "explorer": "https://testnet.xrpl.org/transactions/",
     },
@@ -37,6 +39,7 @@ NETWORKS = {
             "https://s1.ripple.com:51234/",
             "https://s2.ripple.com:51234/",
         ],
+        "ws": ["wss://xrplcluster.com/", "wss://s1.ripple.com/", "wss://s2.ripple.com/"],
         "faucet": None,
         "explorer": "https://livenet.xrpl.org/transactions/",
     },
@@ -51,6 +54,8 @@ def D(v: Any) -> Decimal:
 class Settings:
     network: str = "testnet"
     rpc_urls: List[str] = field(default_factory=list)
+    ws_urls: List[str] = field(default_factory=list)
+    use_ledger_stream: bool = True
     allow_mainnet_trading: bool = False
     num_bots: int = 5
     working_balance_xrp: Decimal = D(100)
@@ -98,6 +103,7 @@ def load_settings(path: Optional[Path] = None, network_override: Optional[str] =
         raise ValueError(f"Unknown network {network!r}")
     s.network = network
     s.rpc_urls = raw.get("rpc_urls", {}).get(network) or NETWORKS[network]["rpc"]
+    s.ws_urls = (raw.get("ws_urls") or {}).get(network) or NETWORKS[network]["ws"]
     simple = {
         "allow_mainnet_trading": bool,
         "num_bots": int,
@@ -127,6 +133,7 @@ def load_settings(path: Optional[Path] = None, network_override: Optional[str] =
         "route_retry_cooldown_seconds": float,
         "stray_offer_max_age_seconds": float,
         "timezone": str,
+        "use_ledger_stream": bool,
     }
     for k, conv in simple.items():
         if k in raw and raw[k] is not None:
