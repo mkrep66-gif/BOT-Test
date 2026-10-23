@@ -189,6 +189,7 @@ def _group_reason(reason: str) -> str:
         ("market in use by", "another bot was using that market"),
         ("bot not trading", "bot was stopped (kill switch / loss cap / halt)"),
         ("profit after fees and", "gap too small: profit after fees and safety margin below the minimum"),
+        ("network fees too high", "network fees were above our limit (busy network) - skipped"),
     ):
         if r.startswith(prefix):
             return label
@@ -212,8 +213,12 @@ def _suggest(rv: Review) -> List[str]:
         out.append("Some trades were skipped because prices were over 60 seconds old - a server was slow or out of sync.")
     if rv.missed_reasons.get("another bot was using that market", 0) > rv.attempts:
         out.append("Bots often wanted the same market at once. Fewer bots (num_bots) may do just as well.")
-    if any(v[2] > 10 for v in rv.server_trouble.values()):
-        out.append("A server told us to slow down more than 10 times. Lowering requests_per_second_per_server would help.")
+    troubled = [u for u, v in rv.server_trouble.items() if v[2] > 10]
+    if len(troubled) >= 2:
+        out.append("Several servers made us back off more than 10 times. Lowering requests_per_second_per_server would help.")
+    elif troubled:
+        out.append(f"One server ({troubled[0]}) failed or made us back off often while the others were fine - "
+                   "most likely that server had an outage. Nothing to change.")
     if rv.wins and rv.trade_profit > 0 and rv.expected_profit > 0 and rv.trade_profit < rv.expected_profit * Decimal("0.5"):
         out.append("Trades made under half the profit expected - the price model may be too optimistic; worth a closer look.")
     if not out:
