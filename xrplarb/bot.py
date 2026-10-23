@@ -459,11 +459,17 @@ class Bot:
     async def check_risk(self, snap: MarketSnapshot) -> None:
         v = self.record_balance(snap)
         loss, frac, start = daily_loss(self.db, self.network, self.name, v.total)
-        if start is not None and loss_cap_hit(frac, self.s.daily_loss_limit_pct) and not self.halted():
-            self.halt(f"daily loss cap hit ({frac * 100:.2f}% of {start:.2f} XRP)")
+        limit, drill = self.s.daily_loss_limit_pct, ""
+        # Testnet drill (cli loss-cap-drill): this one bot treats today as over
+        # its cap once, so the real stop / sell / alert / resume path runs.
+        if self.network == "testnet" and self.db.get_flag(f"losscap_drill:{self.name}"):
+            self.db.clear_flag(f"losscap_drill:{self.name}")
+            limit, drill = Decimal(-1), "TEST DRILL: "
+        if start is not None and loss_cap_hit(frac, limit) and not self.halted():
+            self.halt(f"{drill}daily loss cap hit ({frac * 100:.2f}% of {start:.2f} XRP)")
             notes = await self.liquidate_all("loss cap")
             await self.alerter.send(
-                f"{self.name} hit its daily loss cap and stopped",
+                f"{drill}{self.name} hit its daily loss cap and stopped",
                 f"Down {loss:.4f} XRP ({frac * 100:.2f}%) today. Tokens converted to XRP:\n" + "\n".join(notes)
                 + "\nIt stays off until you press Resume on the dashboard.",
                 force=True,

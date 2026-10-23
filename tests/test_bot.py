@@ -191,6 +191,19 @@ def test_loss_cap_halts_and_liquidates(mk):
     assert all(r["action"] == "missed" for r in db.query("SELECT action FROM opportunities"))
 
 
+def test_loss_cap_drill_stops_one_bot_once_on_testnet(mk):
+    bot, db, net = mk()
+    run(bot.refresh_balances())
+    run(bot.check_risk(snap()))  # day-start snapshot; no loss
+    assert not bot.halted()
+    db.set_flag(f"losscap_drill:{bot.name}", "1")
+    run(bot.check_risk(snap()))
+    assert "TEST DRILL" in bot.halted() and "loss cap" in bot.halted()
+    assert any("TEST DRILL" in s for s in bot.alerter.sent)
+    assert not db.get_flag(f"losscap_drill:{bot.name}")      # one-shot
+    assert bot.s.daily_loss_limit_pct == D("0.10")            # setting untouched
+
+
 def test_missed_gap_logging_is_deduplicated(mk):
     bot, db, _ = mk(atomic=False)
     for _ in range(5):

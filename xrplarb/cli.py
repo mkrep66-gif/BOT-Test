@@ -350,6 +350,14 @@ def cmd_resume(args):
     print("Resume requested.")
 
 
+def cmd_loss_cap_drill(args):
+    if args.network != "testnet":
+        sys.exit("The loss-cap drill runs on testnet only.")
+    DB().set_flag(f"losscap_drill:{args.bot}", "1")
+    print(f"Drill set for {args.bot}: within about 30 s it stops as if it hit its daily loss cap,\n"
+          "sells its test tokens for XRP and sends a Telegram alert. It stays off until /resume <pin>.")
+
+
 def cmd_export(args):
     from .export import export_all
 
@@ -619,6 +627,8 @@ def main(argv=None):
     sp.add_argument("--days", type=int, default=7)
     add("kill", cmd_kill, "KILL SWITCH: stop all bots, convert everything to XRP")
     add("resume", cmd_resume, "release the kill switch / loss-cap stops")
+    sp = add("loss-cap-drill", cmd_loss_cap_drill, "testnet: make one bot go through a real loss-cap stop (settings unchanged)")
+    sp.add_argument("bot", choices=[f"bot{i}" for i in range(1, 6)])
     sp = add("export", cmd_export, "export logs to Excel + CSV")
     sp.add_argument("--out", default="exports")
     sp = add("backup-secrets", cmd_backup, "write an encrypted backup of the private settings")
