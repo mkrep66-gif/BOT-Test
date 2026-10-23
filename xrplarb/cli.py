@@ -30,6 +30,15 @@ from .localtime import today_local
 from .redact import register_secrets, setup_logging
 
 
+def ask_secret(prompt: str) -> str:
+    """Hidden input. Phone terminals (e.g. Termux) wrap pasted text in
+    invisible "bracketed paste" markers (ESC[200~ ... ESC[201~) that the
+    hidden prompt keeps; strip them and any other control characters."""
+    raw = getpass.getpass(prompt)
+    raw = raw.replace("\x1b[200~", "").replace("\x1b[201~", "")
+    return "".join(ch for ch in raw if ch.isprintable()).strip()
+
+
 def _settings(args):
     return load_settings(network_override=getattr(args, "network", None))
 
@@ -49,11 +58,11 @@ def cmd_init(args):
 
 def cmd_set_password(args):
     while True:
-        p1 = getpass.getpass("Choose a dashboard password (12+ characters): ")
+        p1 = ask_secret("Choose a dashboard password (12+ characters): ")
         if len(p1) < 12:
             print("Too short.")
             continue
-        if getpass.getpass("Type it again: ") != p1:
+        if ask_secret("Type it again: ") != p1:
             print("Didn't match.")
             continue
         break
@@ -276,15 +285,15 @@ def cmd_export(args):
 
 
 def cmd_backup(args):
-    pw = getpass.getpass("Backup passphrase (long, memorable, written down offline): ")
-    if len(pw) < 14 or getpass.getpass("Again: ") != pw:
+    pw = ask_secret("Backup passphrase (long, memorable, written down offline): ")
+    if len(pw) < 14 or ask_secret("Again: ") != pw:
         sys.exit("Passphrase too short or didn't match.")
     secrets_store.encrypt_backup(pw, Path(args.out))
     print(f"Encrypted backup written to {args.out}. Without the passphrase it is useless - keep both safe, separately.")
 
 
 def cmd_restore(args):
-    pw = getpass.getpass("Backup passphrase: ")
+    pw = ask_secret("Backup passphrase: ")
     raw = secrets_store.decrypt_backup(pw, Path(args.file))
     import yaml
 
@@ -311,13 +320,23 @@ def cmd_alerts_setup(args):
     if args.kind == "telegram":
         import httpx
 
-        token = getpass.getpass("Telegram bot token from @BotFather (hidden): ").strip()
+        import re
+
+        token = ask_secret("Telegram bot token from @BotFather (hidden): ")
+        if not re.fullmatch(r"\d{5,}:[A-Za-z0-9_-]{30,}", token):
+            sys.exit("That doesn't look like a bot token (it should be numbers, a colon, then about 35 letters). "
+                     "Copy it again from BotFather and re-run this command.")
         input("Now send any message to your bot in Telegram, then press Enter here...")
-        r = httpx.get(f"https://api.telegram.org/bot{token}/getUpdates", timeout=20).json()
+        try:
+            r = httpx.get(f"https://api.telegram.org/bot{token}/getUpdates", timeout=20).json()
+        except httpx.HTTPError as e:
+            sys.exit(f"Couldn't reach Telegram ({type(e).__name__}). Check the server's internet and try again.")
+        if not r.get("ok"):
+            sys.exit("Telegram didn't accept that token. Copy it again from BotFather and re-run this command.")
         chats = {str(u["message"]["chat"]["id"]) for u in r.get("result", []) if "message" in u}
         if len(chats) != 1:
             sys.exit(f"Expected exactly one chat to have messaged the bot, found {len(chats)}. Try again.")
-        pin = getpass.getpass("Choose a 4-8 digit PIN for /kill and /resume: ").strip()
+        pin = ask_secret("Choose a 4-8 digit PIN for /kill and /resume: ")
         if not (pin.isdigit() and 4 <= len(pin) <= 8):
             sys.exit("PIN must be 4-8 digits.")
         secrets_store.set_value("alerts.telegram", {"bot_token": token, "chat_id": chats.pop(), "kill_pin": pin})
@@ -326,7 +345,7 @@ def cmd_alerts_setup(args):
             "smtp_host": input("SMTP server (Gmail: smtp.gmail.com): ").strip() or "smtp.gmail.com",
             "smtp_port": int(input("Port [587]: ").strip() or 587),
             "username": input("Login email: ").strip(),
-            "password": getpass.getpass("App password (hidden): ").strip(),
+            "password": ask_secret("App password (hidden): "),
             "to": input("Send alerts to: ").strip(),
         })
     else:

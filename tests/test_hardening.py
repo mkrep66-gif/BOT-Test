@@ -482,3 +482,12 @@ def test_html_502_page_becomes_server_busy():
         transport=httpx.MockTransport(lambda r: httpx.Response(502, text="<html>Bad gateway</html>")))
     with pytest.raises(ServerBusy):
         run(c._request_impl(ServerInfo()))
+
+
+def test_hidden_input_strips_phone_paste_markers(monkeypatch):
+    import getpass
+
+    from xrplarb import cli
+
+    monkeypatch.setattr(getpass, "getpass", lambda prompt="": "\x1b[200~123456:ABCdefGHIjklMNOpqrSTUvwxYZ0123456789ab\x1b[201~\n")
+    assert cli.ask_secret("x") == "123456:ABCdefGHIjklMNOpqrSTUvwxYZ0123456789ab"
