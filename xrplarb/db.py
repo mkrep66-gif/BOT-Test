@@ -69,6 +69,13 @@ CREATE TABLE IF NOT EXISTS watch_scans (
 """
 
 
+# Columns added after the first release (older databases get them on open).
+MIGRATIONS = [
+    ("watch_episodes", "first_safe_profit_xrp", "TEXT"),  # profit when the gap was first seen = when a bot would fire
+    ("watch_episodes", "would_trade", "INTEGER"),  # 1 if every token on the route is approved
+]
+
+
 def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
@@ -92,6 +99,11 @@ class DB:
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.executescript(SCHEMA)
+        for table, col, kind in MIGRATIONS:
+            try:
+                self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {kind}")
+            except sqlite3.OperationalError:
+                pass  # already there
         self.conn.commit()
 
     def _insert(self, table: str, row: Dict[str, Any]) -> int:

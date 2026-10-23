@@ -16,14 +16,17 @@ import csv
 import logging
 import time
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
 from .amounts import ZERO, Asset
 from .config import REPORTS_DIR, Settings, blocked_reason, load_blocklist, load_token_entries, load_token_pairs
+from .alerts import Alerter
 from .db import DB, now_iso
+from .ledgerstream import LedgerStream
+from .localtime import day_start_utc, local_tz, next_day, tz_label
 from .market import MarketFeed
 from .routes import Route, build_routes
 from .scanner import scan
@@ -49,6 +52,16 @@ def _candidate_tokens(network: str) -> tuple[List[Asset], Set[str]]:
     return tokens, safe
 
 
+def _approved_keys(network: str) -> Set[str]:
+    """Tokens the bots would actually trade: approved and not blocked."""
+    blocked = load_blocklist()
+    return {
+        Asset(t["currency"], t["issuer"]).key
+        for t in load_token_entries(network)
+        if t.get("approved") and not blocked_reason(Asset(t["currency"], t["issuer"]), blocked)
+    }
+
+
 async def run_watch(settings: Settings, db: Optional[DB] = None, max_scans: Optional[int] = None) -> None:
     db = db or DB()
     net = Net(
@@ -57,6 +70,10 @@ async def run_watch(settings: Settings, db: Optional[DB] = None, max_scans: Opti
     )
     feed = MarketFeed(net, depth=settings.book_depth)
     tokens, safe = _candidate_tokens(settings.network)
+    approved = _approved_keys(settings.network)
+    stream = LedgerStream(settings.ws_urls if settings.use_ledger_stream else [])
+    stream_task = asyncio.create_task(stream.run())
+    alerter = Alerter(settings.network, db)
     if not tokens:
         raise SystemExit("No candidate tokens. Run `discover` first.")
     allowed = set(tokens)  # candidates minus the block list
@@ -94,6 +111,7 @@ async def run_watch(settings: Settings, db: Optional[DB] = None, max_scans: Opti
             if o.net_profit <= 0:
                 continue  # gaps that can't even pay the network fee aren't opportunities
             all_safe = all(t.key in safe for t in o.route.tokens)
+            would = all(t.key in approved for t in o.route.tokens)
             db.opportunity(
                 network=netname,
                 bot="watch",
@@ -130,6 +148,7 @@ async def run_watch(settings: Settings, db: Optional[DB] = None, max_scans: Opti
                         ledger_first=o.ledger_index, ledger_last=o.ledger_index,
                         max_net_profit_xrp=str(o.net_profit), max_safe_profit_xrp=str(o.safe_profit),
                         best_size_xrp=str(o.size_xrp), all_tokens_pass=int(all_safe), open=1,
+                        first_safe_profit_xrp=str(o.safe_profit), would_trade=int(would),
                     ),
                 )
                 open_eps[o.route.key] = {"id": row_id, "max_net": o.net_profit, "max_safe": o.safe_profit, "size": o.size_xrp}
@@ -145,7 +164,12 @@ async def run_watch(settings: Settings, db: Optional[DB] = None, max_scans: Opti
         scans += 1
         if scans % 100 == 0:
             log.info("watch: %d scans, %d routes, last scan %d ms", scans, len(routes), dur)
-        await asyncio.sleep(max(0.5, settings.scan_interval_seconds - (time.time() - t0)))
+        await maybe_send_daily(db, settings.network, alerter)
+        # next scan as soon as the next ledger closes (timer fallback)
+        if not (stream.latest and snap.ledger_index and stream.latest > snap.ledger_index):
+            await stream.wait_next(max(0.5, settings.scan_interval_seconds - (time.time() - t0)))
+    stream.stop()
+    stream_task.cancel()
 
 
 def watch_report(db: DB, network: str = "mainnet", out_dir: Path = REPORTS_DIR) -> Path:
@@ -256,3 +280,109 @@ def watch_report(db: DB, network: str = "mainnet", out_dir: Path = REPORTS_DIR) 
             w.writerow([e["first_seen"], e["last_seen"], e["scans"], Route.from_key(e["route"]).label, e["hops"],
                         e["best_size_xrp"], e["max_net_profit_xrp"], e["max_safe_profit_xrp"], bool(e["all_tokens_pass"])])
     return p
+
+
+# ---- daily paper-trading report ------------------------------------------------
+
+DAILY_SEND_HOUR = 7.5  # local time: 07:30
+
+
+def daily_report(db: DB, network: str, day: str) -> tuple[str, str]:
+    """Paper-trading results for one local day. Returns (full markdown, short
+    Telegram text).
+
+    A gap that's still there on the next scan is counted as a trade we would
+    have made (our transaction lands a ledger or two after we see the gap),
+    at the profit it showed when first seen - after network, pool and issuer
+    fees and our slippage margin. A gap gone by the next scan is counted as
+    missed on speed."""
+    netname = f"{network}-watch"
+    start, end = day_start_utc(day), day_start_utc(next_day(day))
+    eps = db.query("SELECT * FROM watch_episodes WHERE network=? AND first_seen>=? AND first_seen<?", (netname, start, end))
+    scans = db.query(
+        "SELECT COUNT(*) n, AVG(duration_ms) d FROM watch_scans WHERE network=? AND ts>=? AND ts<?", (netname, start, end)
+    )[0]
+
+    def first(e) -> Decimal:
+        return Decimal(e["first_safe_profit_xrp"] or e["max_safe_profit_xrp"] or "0")
+
+    ours = [e for e in eps if e["would_trade"]]
+    traded = [e for e in ours if 2 <= e["scans"] <= SUSPICIOUS_SCANS]
+    too_fast = [e for e in ours if e["scans"] < 2]
+    stuck = [e for e in ours if e["scans"] > SUSPICIOUS_SCANS]
+    others = [e for e in eps if not e["would_trade"] and 2 <= e["scans"] <= SUSPICIOUS_SCANS]
+    profit = sum((first(e) for e in traded), ZERO)
+    lost_to_speed = sum((first(e) for e in too_fast), ZERO)
+    other_profit = sum((first(e) for e in others), ZERO)
+
+    by_route: Dict[str, List] = defaultdict(list)
+    for e in traded:
+        by_route[e["route"]].append(e)
+    best = sorted(by_route.items(), key=lambda kv: -sum(first(e) for e in kv[1]))[:5]
+    fast_routes = Counter(e["route"] for e in too_fast).most_common(5)
+
+    def label(k: str) -> str:
+        try:
+            return Route.from_key(k).label
+        except Exception:
+            return k
+
+    L = [
+        f"# Paper trading on mainnet: {day} ({tz_label()})",
+        "",
+        "Read-only: live mainnet prices, the bots' own rules, approved tokens only. No keys, no XRP spent.",
+        "",
+        f"- **Would-be trades:** {len(traded)} (all-or-nothing, so each is a win or a cancelled no-fill - never a loss)",
+        f"- **Profit after all fees:** {profit:+.4f} XRP" + (f" (average {profit / len(traded):+.4f} per trade)" if traded else ""),
+        f"- **Gaps that closed before we could act (speed):** {len(too_fast)}, worth {lost_to_speed:+.4f} XRP",
+        f"- Gaps on watch-only (unapproved) tokens we'd have caught: {len(others)}, worth {other_profit:+.4f} XRP",
+        f"- Gaps that stayed open suspiciously long (left out - probably not really tradeable): {len(stuck)}",
+        f"- Scans: {scans['n'] or 0}, average {((scans['d'] or 0) / 1000):.1f} s each",
+        "",
+    ]
+    if best:
+        L += ["## Best routes", "", "| Route | Trades | Profit (XRP) |", "|---|---|---|"]
+        L += [f"| {label(k)} | {len(es)} | {sum(first(e) for e in es):+.4f} |" for k, es in best]
+        L.append("")
+    if fast_routes:
+        L += ["## Where speed cost us (gaps gone by the next scan)", "", "| Route | Gaps missed |", "|---|---|"]
+        L += [f"| {label(k)} | {n} |" for k, n in fast_routes]
+        L.append("")
+    if not eps:
+        L += ["No profitable gaps at all this day.", ""]
+    short = (
+        f"Paper trading {day}: {len(traded)} would-be trades, {profit:+.4f} XRP after fees. "
+        f"Missed on speed: {len(too_fast)} ({lost_to_speed:+.4f} XRP). "
+        f"Unapproved tokens: {len(others)} ({other_profit:+.4f} XRP). "
+        + (f"Best: {label(best[0][0])} ({sum(first(e) for e in best[0][1]):+.4f})." if best else "")
+    )
+    return "\n".join(L), short
+
+
+def save_daily_report(db: DB, network: str, day: str, out_dir: Optional[Path] = None) -> tuple[Path, str]:
+    text, short = daily_report(db, network, day)
+    out_dir = out_dir or REPORTS_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+    p = out_dir / f"paper_{network}_{day}.md"
+    p.write_text(text)
+    return p, short
+
+
+async def maybe_send_daily(db: DB, network: str, alerter: Alerter) -> None:
+    """Once a day, after 07:30 local, report yesterday (file + Telegram)."""
+    now = datetime.now(local_tz())
+    if now.hour + now.minute / 60 < DAILY_SEND_HOUR:
+        return
+    yesterday = (now.date() - timedelta(days=1)).isoformat()
+    flag = f"paper_daily_sent:{network}"
+    if db.get_flag(flag) == yesterday:
+        return
+    db.set_flag(flag, yesterday)
+    start, end = day_start_utc(yesterday), day_start_utc(next_day(yesterday))
+    if not db.query("SELECT 1 FROM watch_scans WHERE network=? AND ts>=? AND ts<? LIMIT 1", (f"{network}-watch", start, end)):
+        return  # wasn't running that day: nothing to report
+    try:
+        p, short = save_daily_report(db, network, yesterday)
+        await alerter.send("Daily paper-trading report", short + f"\nFull report on the server: {p}", force=True)
+    except Exception as e:  # a report problem must never stop the watcher
+        log.warning("daily report failed: %s", e)

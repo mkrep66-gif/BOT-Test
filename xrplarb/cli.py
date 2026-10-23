@@ -288,6 +288,18 @@ def cmd_watch(args):
     asyncio.run(run_watch(s, max_scans=args.max_scans))
 
 
+def cmd_paper_report(args):
+    from datetime import date, timedelta
+
+    from .watch import save_daily_report
+
+    s = _settings(args)
+    day = args.day or (date.fromisoformat(today_local()) - timedelta(days=1)).isoformat()
+    p, _ = save_daily_report(DB(), s.network, day)
+    print(p.read_text())
+    print(f"(saved to {p})")
+
+
 def cmd_watch_report(args):
     from .watch import watch_report
 
@@ -577,6 +589,8 @@ def main(argv=None):
     sp = add("watch", cmd_watch, "watch-only scanner (no keys, no trades)")
     sp.add_argument("--max-scans", type=int, default=None)
     add("watch-report", cmd_watch_report, "summarise the watch-only results")
+    sp = add("paper-report", cmd_paper_report, "one day of mainnet paper trading in plain English (default: yesterday)")
+    sp.add_argument("--day", default="", help="YYYY-MM-DD (your local date)")
     sp = add("dashboard", cmd_dashboard, "start the phone dashboard")
     sp.add_argument("--host")
     sp.add_argument("--port", type=int)

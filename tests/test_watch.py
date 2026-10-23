@@ -91,3 +91,63 @@ def test_watch_records_episodes_and_reports(env, monkeypatch):
     text = p.read_text()
     assert "lasted long enough" in text and "UPPER BOUND" in text
     assert (env / "reports" / "watch_episodes_mainnet.csv").exists()
+
+
+def test_daily_paper_report_counts_trades_speed_misses_and_unapproved(tmp_path):
+    from decimal import Decimal as D
+
+    from xrplarb import localtime
+    from xrplarb.db import DB
+    from xrplarb.watch import daily_report
+
+    localtime.set_timezone("America/New_York")
+    try:
+        db = DB(tmp_path / "w.db")
+        route = "XRP>AAA.rA>BBB.rB>XRP"
+
+        def ep(scans, would, first, mx="0.5", ts="2026-07-01T15:00:00.000000Z"):
+            db._insert("watch_episodes", dict(network="mainnet-watch", route=route, hops=3, first_seen=ts, last_seen=ts,
+                                              scans=scans, max_net_profit_xrp=mx, max_safe_profit_xrp=mx,
+                                              best_size_xrp="10", all_tokens_pass=1, open=0,
+                                              first_safe_profit_xrp=first, would_trade=would))
+
+        ep(3, 1, "0.03")            # caught: counts at first-seen profit, not the 0.5 best
+        ep(2, 1, "0.02")            # caught
+        ep(1, 1, "0.04")            # gone by next scan -> missed on speed
+        ep(5, 0, "0.07")            # unapproved token -> reported separately
+        ep(500, 1, "0.9")           # stuck open for ages -> excluded
+        ep(3, 1, "0.05", ts="2026-07-02T15:00:00.000000Z")  # next day
+        full, short = daily_report(db, "mainnet", "2026-07-01")
+        assert "**Would-be trades:** 2" in full and "+0.0500 XRP" in full
+        assert "(speed):** 1, worth +0.0400" in full
+        assert "unapproved) tokens we'd have caught: 1, worth +0.0700" in full
+        assert "suspiciously long" in full and "2 would-be trades" in short
+    finally:
+        localtime.set_timezone("")
+
+
+def test_daily_report_is_sent_once_per_day(tmp_path, monkeypatch):
+    import asyncio
+
+    import xrplarb.watch as w
+    from xrplarb.db import DB
+
+    db = DB(tmp_path / "w.db")
+    sent = []
+
+    class A:
+        async def send(self, subject, body="", **kw):
+            sent.append(body)
+
+    monkeypatch.setattr(w, "DAILY_SEND_HOUR", 0)
+    from datetime import date, timedelta
+
+    from xrplarb.localtime import day_start_utc
+
+    yday = (date.today() - timedelta(days=1)).isoformat()
+    db._insert("watch_scans", dict(ts=day_start_utc(yday) + ".5Z", network="mainnet-watch", ledger_index=1,
+                                   routes_checked=1, profitable=0, duration_ms=1))
+    monkeypatch.setattr(w, "REPORTS_DIR", tmp_path)
+    for _ in range(3):
+        asyncio.run(w.maybe_send_daily(db, "mainnet", A()))
+    assert len(sent) == 1 and "would-be trades" in sent[0]
