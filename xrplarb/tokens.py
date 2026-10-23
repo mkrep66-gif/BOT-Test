@@ -30,6 +30,7 @@ log = logging.getLogger(__name__)
 
 LSF_REQUIRE_AUTH = 0x00040000
 LSF_DISABLE_MASTER = 0x00100000
+NEAR_BEST_PRICE = Decimal("1.05")  # order-book depth counts orders within 5% of the best price
 LSF_NO_FREEZE = 0x00200000
 LSF_GLOBAL_FREEZE = 0x00400000
 LSF_ALLOW_CLAWBACK = 0x80000000
@@ -92,7 +93,10 @@ def assess_issuer(report: TokenReport, info: Optional[Dict[str, Any]]) -> None:
     report.require_auth = _flag(flags, LSF_REQUIRE_AUTH)
     master_off = _flag(flags, LSF_DISABLE_MASTER)
     regkey = info.get("RegularKey")
-    report.issuer_locked = master_off and (regkey is None or regkey in BLACKHOLE_KEYS)
+    # A multi-signature list can still sign for the account, so it isn't locked
+    # (e.g. RLUSD's issuer: master key off, controlled by a signer list).
+    has_signers = bool(info.get("signer_lists"))
+    report.issuer_locked = master_off and not has_signers and (regkey is None or regkey in BLACKHOLE_KEYS)
 
     if report.global_freeze:
         report.red_flags.append("FROZEN: the issuer has frozen this token for everyone right now. Nobody can trade it.")
@@ -139,8 +143,11 @@ def assess_liquidity(report: TokenReport, snap: MarketSnapshot, min_xrp_liquidit
             continue
         if e.amm is not None:
             depth = max(depth, e.amm.pool_in if e.src.is_xrp else e.amm.pool_out)
-    if buy is not None:
-        depth += sum((o.in_amount for o in buy.offers), ZERO)
+    if buy is not None and buy.offers:
+        # Only count orders near the best price: one absurdly priced order
+        # (seen on mainnet: "500 million XRP" of depth) isn't real liquidity.
+        best = buy.offers[0].price
+        depth += sum((o.in_amount for o in buy.offers if o.price <= best * NEAR_BEST_PRICE), ZERO)
     report.xrp_liquidity = depth
 
     for size in (Decimal(20), Decimal(100)):

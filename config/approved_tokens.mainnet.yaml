@@ -1,0 +1,136 @@
+# Tokens the bots may trade on this network.
+# A token is only used when `approved: true`. Approval is done with:
+#   python -m xrplarb tokens approve <CURRENCY.ISSUER> --network mainnet
+# and only after the owner has confirmed it in writing.
+network: mainnet
+tokens:
+- name: 3RDEYE
+  currency: '3352444559450000000000000000000000000000'
+  issuer: rHjyBqFM5oQvXu1soWtATC4r1V6GBnhCQQ
+  approved: false
+  source: candidate from mainnet bot scan 2026-10-23 (watch-only until reviewed and
+    approved)
+  verdict: CAUTION
+  review_summary:
+  - no red flags
+- name: ARMY
+  currency: 41524D5900000000000000000000000000000000
+  issuer: rGG3wQ4kUzd7Jnmk1n5NWPZjjut62kCBfC
+  approved: false
+  source: candidate from mainnet bot scan 2026-10-23 (watch-only until reviewed and
+    approved)
+  verdict: CAUTION
+  review_summary:
+  - no red flags
+- name: BITx
+  currency: '4249547800000000000000000000000000000000'
+  issuer: rBitcoiNXev8VoVxV7pwoQx1sSfonVP9i3
+  approved: false
+  source: candidate from mainnet bot scan 2026-10-23 (watch-only until reviewed and
+    approved)
+  verdict: NOT RECOMMENDED
+  review_summary:
+  - 'Thin market: only about 609 XRP of liquidity against XRP (we want at least 5,000).'
+- name: DROP
+  currency: 44524F5000000000000000000000000000000000
+  issuer: rszenFJoDdiGjyezQc8pME9KWDQH43Tswh
+  approved: false
+  source: candidate from mainnet bot scan 2026-10-23 (watch-only until reviewed and
+    approved)
+  verdict: CAUTION
+  review_summary:
+  - no red flags
+- name: FUZZY
+  currency: 46555A5A59000000000000000000000000000000
+  issuer: rhCAT4hRdi2Y9puNdkpMzxrdKa5wkppR62
+  approved: false
+  source: candidate from mainnet bot scan 2026-10-23 (watch-only until reviewed and
+    approved)
+  verdict: CAUTION
+  review_summary:
+  - no red flags
+- name: HOOTS
+  currency: 484F4F5453000000000000000000000000000000
+  issuer: rNPWp2RX2GHVbFbG77k76Ak8nhKwrHu17b
+  approved: false
+  source: candidate from mainnet bot scan 2026-10-23 (watch-only until reviewed and
+    approved)
+  verdict: NOT RECOMMENDED
+  review_summary:
+  - 'Thin market: only about 3,675 XRP of liquidity against XRP (we want at least
+    5,000).'
+- name: PHNIX
+  currency: 50484E4958000000000000000000000000000000
+  issuer: rDFXbW2ZZCG5WgPtqwNiA2xZokLMm9ivmN
+  approved: false
+  source: candidate from mainnet bot scan 2026-10-23 (watch-only until reviewed and
+    approved)
+  verdict: CAUTION
+  review_summary:
+  - no red flags
+- name: PLX
+  currency: PLX
+  issuer: rGLEgQdktoN4Be5thhk6seg1HifGPBxY5Q
+  approved: false
+  source: candidate from mainnet bot scan 2026-10-23 (watch-only until reviewed and
+    approved)
+  verdict: CAUTION
+  review_summary:
+  - no red flags
+- name: POLICE
+  currency: 504F4C4943450000000000000000000000000000
+  issuer: rfjutsDJfakrhZUPMBe5E65S38eRZEP3yt
+  approved: false
+  source: candidate from mainnet bot scan 2026-10-23 (watch-only until reviewed and
+    approved)
+  verdict: NOT RECOMMENDED
+  review_summary:
+  - 'Thin market: only about 960 XRP of liquidity against XRP (we want at least 5,000).'
+- name: RLUSD
+  currency: 524C555344000000000000000000000000000000
+  issuer: rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De
+  approved: false
+  source: candidate from mainnet bot scan 2026-10-23 (watch-only until reviewed and
+    approved)
+  verdict: NOT RECOMMENDED
+  review_summary:
+  - 'CLAWBACK: the issuer can take this token back out of any wallet at any time.
+    If that happened while a bot held it, the bot would lose that value.'
+- name: SeagullCoin
+  currency: 53656167756C6C436F696E000000000000000000
+  issuer: rnqiA8vuNriU9pqD1ZDGFH8ajQBL25Wkno
+  approved: false
+  source: candidate from mainnet bot scan 2026-10-23 (watch-only until reviewed and
+    approved)
+  verdict: NOT RECOMMENDED
+  review_summary:
+  - 'Thin market: only about 707 XRP of liquidity against XRP (we want at least 5,000).'
+- name: TRIPPR
+  currency: '5452495050520000000000000000000000000000'
+  issuer: r9QYoVFNFZV1rZtFZEypPPpka2iEVDgqY1
+  approved: false
+  source: candidate from mainnet bot scan 2026-10-23 (watch-only until reviewed and
+    approved)
+  verdict: NOT RECOMMENDED
+  review_summary:
+  - 'Thin market: only about 1,027 XRP of liquidity against XRP (we want at least
+    5,000).'
+- name: Xmen
+  currency: 586D656E00000000000000000000000000000000
+  issuer: rMFL2KuFPMuiujdbVGbMzNNjj5QKyd6dZf
+  approved: false
+  source: candidate from mainnet bot scan 2026-10-23 (watch-only until reviewed and
+    approved)
+  verdict: CAUTION
+  review_summary:
+  - no red flags
+- name: gei
+  currency: gei
+  issuer: raadqNCqPHhqpb5HEMBjbfFa21YYu9GWfW
+  approved: false
+  source: candidate from mainnet bot scan 2026-10-23 (watch-only until reviewed and
+    approved)
+  verdict: NOT RECOMMENDED
+  review_summary:
+  - 'Thin market: only about 3,082 XRP of liquidity against XRP (we want at least
+    5,000).'

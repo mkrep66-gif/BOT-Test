@@ -323,12 +323,15 @@ class Net:
 
     async def account_info(self, address: str) -> Optional[Dict[str, Any]]:
         try:
-            r = await self.request(AccountInfo(account=address, ledger_index="validated"))
+            r = await self.request(AccountInfo(account=address, ledger_index="validated", signer_lists=True))
         except RPCError as e:
             if e.error == "actNotFound":
                 return None
             raise
-        return r["account_data"]
+        data = dict(r["account_data"])
+        # API v2 puts signer lists next to account_data, v1 inside it
+        data["signer_lists"] = r.get("signer_lists") or data.get("signer_lists") or []
+        return data
 
     async def xrp_balance(self, address: str) -> Decimal:
         info = await self.account_info(address)

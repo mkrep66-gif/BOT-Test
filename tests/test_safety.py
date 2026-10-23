@@ -185,3 +185,34 @@ def test_export_xlsx_and_tax_rows(env):
     assert tax[0][:5] == ("Date", "Sent Amount", "Sent Currency", "Received Amount", "Received Currency")
     assert tax[1][1] == 10 and tax[1][2] == "XRP" and tax[2][5] == 0.00004
     assert (env / "exp" / "tax.csv").exists()
+
+
+def test_issuer_with_signer_list_is_not_called_locked():
+    # RLUSD's issuer: master key disabled but controlled by a multi-sig list.
+    from xrplarb.amounts import Asset
+    from xrplarb.tokens import LSF_DISABLE_MASTER, TokenReport, assess_issuer
+
+    r = TokenReport(asset=Asset("USD", "rI"))
+    assess_issuer(r, {"Flags": LSF_DISABLE_MASTER, "signer_lists": [{"SignerQuorum": 2}]})
+    assert not r.issuer_locked
+    r2 = TokenReport(asset=Asset("USD", "rI"))
+    assess_issuer(r2, {"Flags": LSF_DISABLE_MASTER, "signer_lists": []})
+    assert r2.issuer_locked
+
+
+def test_liquidity_ignores_absurdly_priced_orders():
+    from xrplarb.amounts import XRP, Asset
+    from xrplarb.market import MarketSnapshot
+    from xrplarb.quote import Edge, Offer
+    from xrplarb.tokens import TokenReport, assess_liquidity
+
+    T = Asset("BIT", "rI")
+    s = MarketSnapshot(ledger_index=1, taken_at=0)
+    s.edges[(XRP.key, T.key)] = Edge(XRP, T, offers=[
+        Offer(out_amount=D(100), in_amount=D(1000)),               # real: 10 XRP each
+        Offer(out_amount=D(1), in_amount=D(500_000_000)),          # absurd price
+    ])
+    s.edges[(T.key, XRP.key)] = Edge(T, XRP, offers=[Offer(out_amount=D(900), in_amount=D(100))])
+    r = TokenReport(asset=T)
+    assess_liquidity(r, s, D(5000))
+    assert r.xrp_liquidity == D(1000)
