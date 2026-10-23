@@ -102,3 +102,12 @@ def test_pairs_we_cannot_vouch_for_are_left_out():
 def test_unhealthy_feed_returns_none_so_the_caller_falls_back():
     feed = LiveFeed(net=None, ws_urls=[])
     assert asyncio.run(feed.next_snapshot(0.1)) is None
+
+
+def test_servers_that_refused_us_go_to_the_back():
+    feed = LiveFeed(net=None, ws_urls=["wss://a", "wss://b", "wss://c"])
+    feed._refused["wss://a"] = time.time()
+    order = feed._order([("wss://a", 0.0), ("wss://b", 0.4), ("wss://c", None)])
+    assert [u for u, _ in order] == ["wss://b", "wss://c", "wss://a"]
+    feed._refused["wss://a"] = time.time() - 7 * 3600  # long ago: fastest again
+    assert feed._order([("wss://a", 0.0), ("wss://b", 0.4)])[0][0] == "wss://a"

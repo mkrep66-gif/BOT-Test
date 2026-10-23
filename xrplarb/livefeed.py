@@ -152,6 +152,48 @@ def apply_pool_change(amm: dict, new: Dict[str, object]) -> None:
             amm[side] = new[k]
 
 
+async def rank_servers(urls: List[str], seconds: float = 20.0) -> List[Tuple[str, Optional[float]]]:
+    """Listen to the ledger stream on every server at once and rank them by how
+    soon each tells us a ledger has closed (median delay behind whichever
+    server reported that ledger first). What counts is this delay - not
+    distance or ping - because it is when our scan can start.
+
+    Returns [(url, median delay in seconds or None if it didn't keep up)], fastest first."""
+    import websockets
+
+    first: Dict[int, float] = {}
+    seen: Dict[str, Dict[int, float]] = {u: {} for u in urls}
+
+    async def listen(u: str) -> None:
+        try:
+            async with websockets.connect(u, open_timeout=10, max_size=None) as ws:
+                await ws.send(json.dumps({"id": 1, "command": "subscribe", "streams": ["ledger"]}))
+                async for raw in ws:
+                    m = json.loads(raw)
+                    if m.get("type") == "ledgerClosed":
+                        t, li = time.time(), int(m["ledger_index"])
+                        seen[u][li] = t
+                        first[li] = min(first.get(li, t), t)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.info("server check: %s didn't answer (%s)", u, type(e).__name__)
+
+    tasks = [asyncio.create_task(listen(u)) for u in urls]
+    await asyncio.sleep(seconds)
+    for t in tasks:
+        t.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+    ranked: List[Tuple[str, Optional[float]]] = []
+    for u in urls:
+        lags = sorted(seen[u][li] - first[li] for li in first if li in seen[u])
+        # a server that missed more than a third of the ledgers isn't keeping up
+        ok = first and len(lags) >= max(1, len(first) * 2 // 3)
+        ranked.append((u, lags[len(lags) // 2] if ok else None))
+    ranked.sort(key=lambda x: (x[1] is None, x[1] or 0.0))
+    return ranked
+
+
 class LiveFeed:
     def __init__(
         self,
@@ -190,7 +232,12 @@ class LiveFeed:
         self._subscribed: Set[str] = set()
         self._pending: Dict[int, asyncio.Future] = {}
         self.timing = (0, 0)  # last ledger: (ms waiting for its transactions, ms re-reading changed books)
-        self.ready_ms: List[int] = []  # recent "snapshot ready N ms after the ledger closed"
+        self.ready_ms: List[int] = []
+        self.server_delays: List[Tuple[str, Optional[float]]] = []  # last ranking, fastest first
+        self.server = ""  # the server we're connected to
+        self.rank_every_s = 6 * 3600
+        self._ranked_at = 0.0
+        self._refused: Dict[str, float] = {}  # server -> when it refused our subscriptions  # recent "snapshot ready N ms after the ledger closed"
         self._next_id = 0
         self.stats = {"ledgers": 0, "pool_updates": 0, "book_reads": 0, "full_reads": 0, "drift": 0,
                       "reconnects": 0, "late_tx": 0}
@@ -217,6 +264,11 @@ class LiveFeed:
 
         i, backoff = 0, 1.0
         while not self._stop:
+            if len(self.urls) > 1 and time.time() - self._ranked_at > min(self.rank_every_s, 1800 if i else self.rank_every_s):
+                # use whichever server tells us about new ledgers first (re-checked
+                # at start, every few hours, and after a drop if the last check is old)
+                await self._rank()
+                i = 0
             url = self.urls[i % len(self.urls)]
             try:
                 async with websockets.connect(url, max_size=None, ping_interval=20, open_timeout=15) as ws:
@@ -235,10 +287,10 @@ class LiveFeed:
                         for i in range(0, len(books), SUB_CHUNK):
                             await self._subscribe(books=books[i:i + SUB_CHUNK])
                         await self._subscribe_pools()
-                        self.connected, backoff = True, 1.0
+                        self.connected, backoff, self.server = True, 1.0, url
                         log.info("live feed connected: %s (%d markets)", url, len(self.pairs))
                         worker = asyncio.create_task(self._ledger_worker())
-                        await reader
+                        await self._until_rerank(reader)
                     finally:
                         reader.cancel()
                         if worker:
@@ -250,12 +302,52 @@ class LiveFeed:
                 raise
             except Exception as e:
                 log.warning("live feed %s dropped: %s %s", url, type(e).__name__, str(e)[:120])
+                if "too busy" in str(e) and len(self.urls) > 1:
+                    # this server won't carry all our markets (some cap how many
+                    # books one connection may follow): use the next fastest
+                    # until the next speed check
+                    self.urls = [u for u in self.urls if u != url] + [url]
+                    self._refused[url] = time.time()
+                    i = -1
             self.connected = self.synced = False
             self._ws = None
             self.stats["reconnects"] += 1
             i += 1
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 60.0)
+
+    def _order(self, ranked: List[Tuple[str, Optional[float]]]) -> List[Tuple[str, Optional[float]]]:
+        """Fastest first, but a server that refused our subscriptions in the
+        last few hours goes to the back (it would only refuse again)."""
+        fresh = lambda u: time.time() - self._refused.get(u, 0) < self.rank_every_s  # noqa: E731
+        return sorted(ranked, key=lambda x: (fresh(x[0]), x[1] is None, x[1] or 0.0))
+
+    async def _rank(self) -> None:
+        ranked = self._order(await rank_servers(self.urls))
+        self._ranked_at = time.time()
+        self.server_delays = ranked
+        if ranked and ranked[0][1] is not None:
+            self.urls = [u for u, _ in ranked]
+        log.info("live feed: servers by speed: %s", ", ".join(
+            f"{u} {'+%d ms' % (d * 1000) if d is not None else 'not keeping up'}" for u, d in ranked))
+
+    async def _until_rerank(self, reader: asyncio.Task) -> None:
+        """Stay on this server until the connection ends, or until it's time to
+        check again whether another server has become faster."""
+        while not reader.done():
+            await asyncio.wait({reader}, timeout=60)
+            if len(self.urls) > 1 and time.time() - self._ranked_at > self.rank_every_s:
+                ranked = self._order(await rank_servers(self.urls))
+                self._ranked_at, self.server_delays = time.time(), ranked
+                mine = dict(ranked).get(self.server)
+                best_url, best = ranked[0]
+                # switch only for a clear win (a reconnect costs a full re-read)
+                if best is not None and best_url != self.server and (mine is None or mine - best > 0.15):
+                    log.info("live feed: %s is now faster than %s, switching", best_url, self.server)
+                    self.urls = [u for u, _ in ranked]
+                    reader.cancel()
+                    raise ConnectionError("switching to a faster server")
+        await reader
 
     def stop(self) -> None:
         self._stop = True
@@ -284,7 +376,7 @@ class LiveFeed:
         """Subscribe and wait for the answer. Public servers sometimes say
         "tooBusy" to a burst of subscriptions: back off and ask again; if one
         keeps refusing, give up on it (the caller moves to the next server)."""
-        for attempt in range(5):
+        for attempt in range(4):
             if self._ws is None:
                 raise ConnectionError("not connected")
             self._next_id += 1
