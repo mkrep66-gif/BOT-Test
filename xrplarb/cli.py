@@ -207,6 +207,42 @@ def cmd_tokens_block(args, block=True):
         print(f"Removed {target} from the block list. (It still needs approval before it is traded.)")
 
 
+def cmd_tokens_merge(args):
+    """Add candidate tokens (and markets) from another list - e.g. the repo's
+    updated list - without touching anything this machine already has. New
+    entries always arrive unapproved; approvals are never copied."""
+    import yaml
+
+    from .amounts import Asset
+    from .config import load_token_pairs, save_token_pairs
+
+    s = _settings(args)
+    src = yaml.safe_load(Path(args.file).read_text()) or {}
+    have = {(e["currency"], e["issuer"]): e for e in load_token_entries(s.network)}
+    blocked = load_blocklist()
+    added = []
+    for e in src.get("tokens") or []:
+        key = (e["currency"], e["issuer"])
+        if key in have or blocked_reason(Asset(*key), blocked):
+            continue
+        have[key] = {**{k: v for k, v in e.items() if not k.startswith("approv")}, "approved": False}
+        added.append(e.get("name", e["currency"]))
+    save_tokens(s.network, list(have.values()))
+    n_pairs = 0
+    if args.markets and Path(args.markets).exists():
+        theirs = yaml.safe_load(Path(args.markets).read_text()) or {}
+        pairs = set(load_token_pairs(s.network))
+        for a, b in theirs.get("token_pairs") or []:
+            pa, pb = Asset.from_key(a), Asset.from_key(b)
+            if not (blocked_reason(pa, blocked) or blocked_reason(pb, blocked)):
+                pairs.add((pa, pb))
+        save_token_pairs(s.network, sorted(pairs, key=lambda p: (p[0].key, p[1].key)))
+        n_pairs = len(pairs)
+    print(f"Added {len(added)} new candidate(s), all unapproved: {', '.join(added) or 'none'}. "
+          f"{len(have)} on the {s.network} list; {sum(1 for e in have.values() if e.get('approved'))} approved."
+          + (f" {n_pairs} markets." if args.markets else ""))
+
+
 def cmd_tokens_blocked(args):
     entries = load_blocklist()
     if not entries:
@@ -533,6 +569,9 @@ def main(argv=None):
     sp = add("tokens-unblock", lambda a: cmd_tokens_block(a, block=False), "remove an entry from the block list")
     sp.add_argument("target")
     add("tokens-blocked", cmd_tokens_blocked, "show the block list")
+    sp = add("tokens-merge", cmd_tokens_merge, "add new candidates from another token list (never approves, never overwrites)")
+    sp.add_argument("file")
+    sp.add_argument("--markets", default="")
     add("trustlines", cmd_trustlines, "open trust lines for approved tokens in every bot wallet")
     add("run", cmd_run, "start the trading bots")
     sp = add("watch", cmd_watch, "watch-only scanner (no keys, no trades)")

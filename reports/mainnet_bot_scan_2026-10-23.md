@@ -61,3 +61,51 @@ XRP > FUZZY > TRIPPR > XRP (+0.11, 14 of 444).
 
 Caveats: one 39-minute snapshot. Busy and quiet periods differ a lot, so treat the
 totals as an order of magnitude, not a forecast.
+
+---
+
+# Follow-up: 6.5-hour scan (every 6th ledger, 952 ledgers, ~70,000 transactions)
+
+Estimated for a whole day, all bots on mainnet combined:
+
+| | Per day (estimate) |
+|---|---|
+| Arbitrage attempts | ~578,000 |
+| Fills (2.0%) | ~11,700 |
+| Net profit, everyone together | ~+163 XRP |
+| Fills worth ≥ 0.02 XRP (our minimum) | ~1,280, together ~+217 XRP |
+| Typical trade | risks 0.21 XRP to make 0.0008 XRP |
+
+**So the whole market produces about 11,700 profitable trades a day.** A target of
+5,000–10,000 a day for one operator would mean taking half or more of everything.
+
+## Top 10 trading wallets (6.5 h)
+
+| Wallet | Attempts | Fills | Won (XRP) | Submitting accounts | Wins on |
+|---|---|---|---|---|---|
+| `rxLfrvic9BP4atxcz433ZcdbHUknKFixM` | 7,389 | 73 (1.0%) | +5.83 | 1,225 | FUZZY, 🌊JeetTide, DROP, PLX |
+| `r9ruWAaX3E4EDrMWgs7A7QbcvooMnHkaUd` | 1,313 | 30 (2.3%) | +1.95 | 291 | FUZZY, ARMY, PLX, gei |
+| `raRBYswSuyUpH7h51UmWuNCw6Cj1TmpKD` | 3,866 | 10 (0.3%) | +1.24 | 195 | DROP, FUZZY, TRIPPR |
+| `rBqUZzPRcVus1phirwuPd7f6QJQQsCdyax` | 1,835 | 43 (2.3%) | +0.40 | 4 | FUZZY, DeepTide, RLUSD, DROP |
+| `rLMwKsJjKpyacdqFrKDjPgvtq9XJ6sA78E` | 1,374 | 29 (2.1%) | +0.25 | 403 | FUZZY, DROP, ARMY, BITx |
+| `rM111p5yr8K3X9VCGBTWFwf6jNBdzaHYzm` | 454 | 16 (3.5%) | +0.25 | 43 | FUZZY, RLUSD, BITx |
+| `ra111hLXnbk3SYcJKggSC6D1d2qZ6C58QR` | 452 | 10 (2.2%) | +0.12 | 42 | XAH, PLX, PHNIX |
+| `rE111hpjvsc1gq1ZoRET8AAVdFEMFPG8JK` | 381 | 15 (3.9%) | +0.05 | 42 | PLX, DROP, FUZZY |
+| `r4Wij5i9k9DNzW1CKXFetjCeTqWoPgsxpr` | 135 | 1 (0.7%) | +0.05 | 16 | ARMY, Xmen, gei |
+| `rtaXvxk6mqixCgMETaA5jxgm3ZKB5n3FP` | 554 | 6 (1.1%) | +0.04 | 72 | DROP, gei, FUZZY |
+
+## Where the money is
+
+Most won: FUZZY (+5.8), DROP (+4.0), Xmen (+2.7), 🌊JeetTide (+2.2), DeepTide (+1.4).
+Best routes: XRP > FUZZY > DROP > XRP (+2.58 from 2 fills), XRP > Xmen > FUZZY > XRP (+1.18).
+
+New candidates added (unapproved): 🌊JeetTide, DeepTide, mula, ape, CODED, SLOPPY,
+CRAP, nuked, scrap. Safety review: only **DeepTide** and **scrap** pass (CAUTION);
+the rest are too thin (50–4,900 XRP of real liquidity).
+
+## Auction slots
+
+The top bots hold or are authorised on slots (Xmen, DROP, PHNIX). The slots on the
+busiest pools - FUZZY (0.65% fee), TRIPPR (0.53%), PLX (0.50%) - were vacant.
+Our pricing now uses the discounted fee when a slot covers all our bots; buying
+one costs real XRP and is not planned before mainnet results justify it.

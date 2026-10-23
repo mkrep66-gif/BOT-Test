@@ -525,3 +525,29 @@ def test_ledger_stream_wakes_on_close_and_times_out_otherwise():
         return await s.wait_next(2)
 
     assert run(go()) is True
+
+
+def test_tokens_merge_adds_only_new_unapproved_and_skips_blocked(cfgdir, tmp_path):
+    import yaml
+
+    from xrplarb import cli
+
+    cfgdir.save_tokens("mainnet", [{"name": "OLD", "currency": "OLD", "issuer": "rOld", "approved": True}])
+    cfgdir.save_blocklist([{"symbol": "BCHAMP"}])
+    src = tmp_path / "theirs.yaml"
+    src.write_text(yaml.safe_dump({"tokens": [
+        {"name": "OLD", "currency": "OLD", "issuer": "rOld", "approved": False},
+        {"name": "NEW", "currency": "NEW", "issuer": "rNew", "approved": True, "approved_on": "x"},
+        {"name": "BCHAMP", "currency": "BCHAMP".encode().hex().upper().ljust(40, "0"), "issuer": "rB", "approved": False},
+    ]}))
+    cli.main(["tokens-merge", str(src), "--network", "mainnet"])
+    got = {e["name"]: e for e in cfgdir.load_token_entries("mainnet")}
+    assert got["OLD"]["approved"] is True          # existing entry untouched
+    assert got["NEW"]["approved"] is False and "approved_on" not in got["NEW"]   # approvals never copied
+    assert "BCHAMP" not in got                       # block list respected
+
+
+def test_emoji_token_names_decode():
+    from xrplarb.amounts import currency_symbol
+
+    assert currency_symbol("🌊JeetTide".encode().hex().upper().ljust(40, "0")) == "🌊JeetTide"

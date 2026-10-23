@@ -57,7 +57,7 @@ tokens:
     approved)
   verdict: NOT RECOMMENDED
   review_summary:
-  - 'Thin market: only about 3,675 XRP of liquidity against XRP (we want at least
+  - 'Thin market: only about 3,878 XRP of liquidity against XRP (we want at least
     5,000).'
 - name: PHNIX
   currency: 50484E4958000000000000000000000000000000
@@ -113,7 +113,7 @@ tokens:
     approved)
   verdict: NOT RECOMMENDED
   review_summary:
-  - 'Thin market: only about 1,027 XRP of liquidity against XRP (we want at least
+  - 'Thin market: only about 1,100 XRP of liquidity against XRP (we want at least
     5,000).'
 - name: Xmen
   currency: 586D656E00000000000000000000000000000000
@@ -132,5 +132,88 @@ tokens:
     approved)
   verdict: NOT RECOMMENDED
   review_summary:
-  - 'Thin market: only about 3,082 XRP of liquidity against XRP (we want at least
+  - 'Thin market: only about 3,087 XRP of liquidity against XRP (we want at least
     5,000).'
+- name: "\U0001F30AJeetTide"
+  currency: F09F8C8A4A656574546964650000000000000000
+  issuer: rPeZtayaDWY7oygidnkSPK99bdLPFbYYAW
+  approved: false
+  source: candidate from 6.5 h mainnet bot scan 2026-10-23 (watch-only until reviewed
+    and approved)
+  verdict: NOT RECOMMENDED
+  review_summary:
+  - 'Thin market: only about 462 XRP of liquidity against XRP (we want at least 5,000).'
+- name: DeepTide
+  currency: '4465657054696465000000000000000000000000'
+  issuer: rnHDzEH4xyW6u4LbXqDoX1uk36v5ovhbFi
+  approved: false
+  source: candidate from 6.5 h mainnet bot scan 2026-10-23 (watch-only until reviewed
+    and approved)
+  verdict: CAUTION
+  review_summary:
+  - no red flags
+- name: mula
+  currency: 6D756C6100000000000000000000000000000000
+  issuer: rMULA5hkZqsu7545NPnJZfu5ghKxuRbCro
+  approved: false
+  source: candidate from 6.5 h mainnet bot scan 2026-10-23 (watch-only until reviewed
+    and approved)
+  verdict: NOT RECOMMENDED
+  review_summary:
+  - 'Thin market: only about 50 XRP of liquidity against XRP (we want at least 5,000).'
+- name: ape
+  currency: ape
+  issuer: rnxGEQytwx7jDfoKXfot9G4gQ1pbuHwf9m
+  approved: false
+  source: candidate from 6.5 h mainnet bot scan 2026-10-23 (watch-only until reviewed
+    and approved)
+  verdict: NOT RECOMMENDED
+  review_summary:
+  - 'Thin market: only about 563 XRP of liquidity against XRP (we want at least 5,000).'
+- name: CODED
+  currency: 434F444544000000000000000000000000000000
+  issuer: rnNErmg9xVmcxxNZUwivbJSH6i9GUwYPFj
+  approved: false
+  source: candidate from 6.5 h mainnet bot scan 2026-10-23 (watch-only until reviewed
+    and approved)
+  verdict: NOT RECOMMENDED
+  review_summary:
+  - 'Thin market: only about 4,938 XRP of liquidity against XRP (we want at least
+    5,000).'
+- name: SLOPPY
+  currency: 534C4F5050590000000000000000000000000000
+  issuer: rpGJSnyroEUzGmphzJXR7cyb5cNrC2gjZy
+  approved: false
+  source: candidate from 6.5 h mainnet bot scan 2026-10-23 (watch-only until reviewed
+    and approved)
+  verdict: NOT RECOMMENDED
+  review_summary:
+  - 'Thin market: only about 396 XRP of liquidity against XRP (we want at least 5,000).'
+- name: CRAP
+  currency: '4352415000000000000000000000000000000000'
+  issuer: rDpyFiCNn7m5Y4zqzP5W1bUUGG4SEffnom
+  approved: false
+  source: candidate from 6.5 h mainnet bot scan 2026-10-23 (watch-only until reviewed
+    and approved)
+  verdict: NOT RECOMMENDED
+  review_summary:
+  - 'Thin market: only about 1,613 XRP of liquidity against XRP (we want at least
+    5,000).'
+- name: nuked
+  currency: 6E756B6564000000000000000000000000000000
+  issuer: rfM8omKYuv2Cwq4d7dja4h8yG59P7bqfja
+  approved: false
+  source: candidate from 6.5 h mainnet bot scan 2026-10-23 (watch-only until reviewed
+    and approved)
+  verdict: NOT RECOMMENDED
+  review_summary:
+  - 'Thin market: only about 632 XRP of liquidity against XRP (we want at least 5,000).'
+- name: scrap
+  currency: '7363726170000000000000000000000000000000'
+  issuer: rGHtYnnigyuaHehWGfAdoEhkoirkGNdZzo
+  approved: false
+  source: candidate from 6.5 h mainnet bot scan 2026-10-23 (watch-only until reviewed
+    and approved)
+  verdict: CAUTION
+  review_summary:
+  - no red flags

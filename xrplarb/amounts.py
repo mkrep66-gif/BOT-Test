@@ -67,7 +67,7 @@ def currency_symbol(code: str) -> str:
     if len(code) == 40:
         try:
             raw = bytes.fromhex(code)
-            text = raw.rstrip(b"\x00").decode("ascii")
+            text = raw.rstrip(b"\x00").decode("utf-8")  # names can include emoji, e.g. 🌊JeetTide
             if text and text.isprintable():
                 return text
         except (ValueError, UnicodeDecodeError):
