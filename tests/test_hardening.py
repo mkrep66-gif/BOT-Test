@@ -564,3 +564,28 @@ def test_watch_skips_blocked_tokens_and_their_markets(cfgdir, monkeypatch):
     cfgdir.save_blocklist([{"symbol": "FUZZY"}])
     tokens, _ = watch._candidate_tokens("mainnet")
     assert [t.currency for t in tokens] == ["ARM"]
+
+
+def test_listing_pages_all_come_from_one_server():
+    # Markers only work on the server that issued them (seen live: invalidParams).
+    class Pager:
+        def __init__(self, name):
+            self.name, self.calls = name, []
+
+        async def request(self, req):
+            self.calls.append(req.marker)
+            page = {None: ("m1", [1, 2]), "m1": ("m2", [3]), "m2": (None, [4])}[req.marker]
+            res = {"ledger_index": 99, "lines": page[1]}
+            if page[0]:
+                res["marker"] = page[0]
+            return Response(status=ResponseStatus.SUCCESS, result=res)
+
+    from xrpl.models.requests import AccountLines
+
+    net = Net(["https://a/", "https://b/"], rate_per_server=100)
+    a, b = Pager("a"), Pager("b")
+    net.clients = [a, b]
+    items = run(net.paginate(lambda m, led: AccountLines(account="rX", ledger_index=led, marker=m), "lines"))
+    assert items == [1, 2, 3, 4]
+    used = a if a.calls else b
+    assert used.calls == [None, "m1", "m2"] and not (a.calls and b.calls)

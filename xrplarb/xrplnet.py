@@ -281,6 +281,34 @@ class Net:
                 last_exc = e
         raise last_exc or RuntimeError("request failed")
 
+    async def paginate(self, build, key: str, max_pages: int = 100000) -> List[Dict[str, Any]]:
+        """Every page of a listing (account_lines, ledger_data, ...).
+
+        A page's "marker" only works on the server that issued it, and for the
+        ledger it was issued against - so all pages come from ONE server, pinned
+        to the first page's ledger. If that server fails part-way, start over on
+        another. `build(marker, ledger_index)` makes the request for a page."""
+        last: Optional[Exception] = None
+        for _ in range(len(self.servers) + 1):
+            sv = self.servers[self._order()[0]]
+            try:
+                first = await self._send(sv, build(None, "validated"))
+                ledger = first.get("ledger_index") or "validated"
+                items = list(first.get(key, []))
+                marker, pages = first.get("marker"), 1
+                while marker and pages < max_pages:
+                    r = await self._send(sv, build(marker, ledger))
+                    items.extend(r.get(key, []))
+                    marker, pages = r.get("marker"), pages + 1
+                return items
+            except RPCError as e:
+                if e.error not in BUSY_ERRORS:
+                    raise
+                last = e
+            except Exception as e:
+                last = e
+        raise last or RuntimeError("listing failed")
+
     def health(self, reset: bool = False) -> List[Dict[str, Any]]:
         """Counters per server since the last reset."""
         now = time.monotonic()
@@ -338,16 +366,9 @@ class Net:
         return drops_to_xrp(info["Balance"]) if info else Decimal(0)
 
     async def trust_lines(self, address: str) -> List[Dict[str, Any]]:
-        lines: List[Dict[str, Any]] = []
-        marker = None
-        while True:
-            r = await self.request(
-                AccountLines(account=address, ledger_index="validated", marker=marker, limit=400)
-            )
-            lines.extend(r.get("lines", []))
-            marker = r.get("marker")
-            if not marker:
-                return lines
+        return await self.paginate(
+            lambda m, led: AccountLines(account=address, ledger_index=led, marker=m, limit=400), "lines"
+        )
 
     async def account_tx(self, address: str, limit: int = 40) -> List[Dict[str, Any]]:
         """Most recent transactions touching this account (newest first)."""
@@ -361,14 +382,9 @@ class Net:
 
     async def account_offers(self, address: str) -> List[Dict[str, Any]]:
         """Standing orders (offers) owned by this account."""
-        offers: List[Dict[str, Any]] = []
-        marker = None
-        while True:
-            r = await self.request(AccountOffers(account=address, ledger_index="validated", marker=marker, limit=200))
-            offers.extend(r.get("offers", []))
-            marker = r.get("marker")
-            if not marker:
-                return offers
+        return await self.paginate(
+            lambda m, led: AccountOffers(account=address, ledger_index=led, marker=m, limit=200), "offers"
+        )
 
     async def token_balances(self, address: str) -> Dict[Asset, Decimal]:
         out: Dict[Asset, Decimal] = {}

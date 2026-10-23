@@ -228,24 +228,21 @@ async def discover_tokens(
     """
     xrp_pools: List[Tuple[Asset, Decimal, str]] = []  # (token, lp balance, amm account)
     token_pairs: List[Tuple[Asset, Asset]] = []
-    marker = None
-    for _ in range(max_pages):
-        r = await net.request(LedgerData(type="amm", ledger_index="validated", limit=256, marker=marker))
-        for obj in r.get("state", []):
-            a = obj.get("Asset", {})
-            b = obj.get("Asset2", {})
-            asset_a = XRP if a.get("currency") == "XRP" else Asset(a["currency"], a["issuer"])
-            asset_b = XRP if b.get("currency") == "XRP" else Asset(b["currency"], b["issuer"])
-            lp = obj.get("LPTokenBalance", {})
-            lp_val = Decimal(lp.get("value", "0")) if isinstance(lp, dict) else ZERO
-            if asset_a.is_xrp != asset_b.is_xrp:
-                tok = asset_b if asset_a.is_xrp else asset_a
-                xrp_pools.append((tok, lp_val, obj.get("Account", "")))
-            elif not asset_a.is_xrp:
-                token_pairs.append((asset_a, asset_b))
-        marker = r.get("marker")
-        if not marker:
-            break
+    amms = await net.paginate(
+        lambda m, led: LedgerData(type="amm", ledger_index=led, limit=256, marker=m), "state", max_pages=max_pages
+    )
+    for obj in amms:
+        a = obj.get("Asset", {})
+        b = obj.get("Asset2", {})
+        asset_a = XRP if a.get("currency") == "XRP" else Asset(a["currency"], a["issuer"])
+        asset_b = XRP if b.get("currency") == "XRP" else Asset(b["currency"], b["issuer"])
+        lp = obj.get("LPTokenBalance", {})
+        lp_val = Decimal(lp.get("value", "0")) if isinstance(lp, dict) else ZERO
+        if asset_a.is_xrp != asset_b.is_xrp:
+            tok = asset_b if asset_a.is_xrp else asset_a
+            xrp_pools.append((tok, lp_val, obj.get("Account", "")))
+        elif not asset_a.is_xrp:
+            token_pairs.append((asset_a, asset_b))
 
     # Rough pre-rank by LP token supply, then measure the real XRP side.
     xrp_pools.sort(key=lambda t: t[1], reverse=True)
