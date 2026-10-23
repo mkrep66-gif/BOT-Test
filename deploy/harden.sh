@@ -51,7 +51,7 @@ PubkeyAuthentication yes
 AuthenticationMethods publickey
 PermitEmptyPasswords no
 MaxAuthTries 3
-LoginGraceTime 30
+LoginGraceTime 90
 X11Forwarding no
 # local forwarding stays on: it's how the dashboard is reached privately
 AllowTcpForwarding local

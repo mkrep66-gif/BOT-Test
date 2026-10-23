@@ -1,6 +1,19 @@
 #!/data/data/com.termux/files/usr/bin/bash
-echo "Opening a private, encrypted tunnel to the dashboard..."
-echo "Chrome opens http://localhost:8080 in a few seconds."
-echo "Come back here and type 'exit' (or close this session) when you're done."
-(sleep 4; termux-open-url http://localhost:8080) &
-ssh -N -L 8080:127.0.0.1:8080 -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 botadmin@157.245.255.65
+# Private dashboard: an encrypted SSH tunnel to the server, then Chrome.
+SERVER=botadmin@157.245.255.65
+FWD=8080:127.0.0.1:8080
+echo "Opening a private, encrypted tunnel to the dashboard."
+pkill -f -- "-L $FWD" 2>/dev/null   # close any tunnel left open earlier
+# -f: ssh goes to the background only AFTER you've logged in and the tunnel
+# works, so Chrome never opens over the passphrase prompt.
+if ! ssh -f -N -L "$FWD" -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 "$SERVER"; then
+    echo "Couldn't open the tunnel (wrong passphrase or no connection). Try again."
+    read -n 1 -s -r -p "Tap any key to close"
+    exit 1
+fi
+echo "Tunnel is up. Opening Chrome at http://localhost:8080 ..."
+termux-open-url http://localhost:8080
+echo
+read -r -p "When you're finished with the dashboard, come back here and press Enter to close the tunnel. "
+pkill -f -- "-L $FWD"
+echo "Tunnel closed."
