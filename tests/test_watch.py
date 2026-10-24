@@ -105,22 +105,25 @@ def test_daily_paper_report_counts_trades_speed_misses_and_unapproved(tmp_path):
         db = DB(tmp_path / "w.db")
         route = "XRP>AAA.rA>BBB.rB>XRP"
 
-        def ep(scans, would, first, mx="0.5", ts="2026-07-01T15:00:00.000000Z"):
+        def ep(scans, would, first, mx="0.5", ts="2026-07-01T15:00:00.000000Z", ledger=None):
+            ep.n = getattr(ep, "n", 0) + 1
             db._insert("watch_episodes", dict(network="mainnet-watch", route=route, hops=3, first_seen=ts, last_seen=ts,
+                                              ledger_first=ledger or 100 + ep.n,
                                               scans=scans, max_net_profit_xrp=mx, max_safe_profit_xrp=mx,
                                               best_size_xrp="10", all_tokens_pass=1, open=0,
                                               first_safe_profit_xrp=first, would_trade=would))
 
         ep(3, 1, "0.03")            # caught: counts at first-seen profit, not the 0.5 best
-        ep(2, 1, "0.02")            # caught
+        ep(2, 1, "0.02", ledger=500)  # caught
+        ep(2, 1, "0.01", ledger=500)  # another loop in the same burst: counts once, at the best (0.02)
         ep(1, 1, "0.04")            # gone by next scan -> missed on speed
         ep(5, 0, "0.07")            # unapproved token -> reported separately
         ep(500, 1, "0.9")           # stuck open for ages -> excluded
         ep(3, 1, "0.05", ts="2026-07-02T15:00:00.000000Z")  # next day
         full, short = daily_report(db, "mainnet", "2026-07-01")
-        assert "**Would-be trades:** 2" in full and "+0.0500 XRP" in full
-        assert "(speed):** 1, worth +0.0400" in full
-        assert "unapproved) tokens we'd have caught: 1, worth +0.0700" in full
+        assert "**Would-be trades:** 2 (from 3 profitable loops" in full and "+0.0500 XRP" in full
+        assert "(speed):** 1 (1 loops), worth +0.0400" in full
+        assert "unapproved) tokens we'd have caught: 1 (1 loops), worth +0.0700" in full
         assert "suspiciously long" in full and "2 would-be trades" in short
     finally:
         localtime.set_timezone("")

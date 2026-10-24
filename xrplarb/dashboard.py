@@ -351,12 +351,12 @@ def render_paper(db: DB, network: str = "mainnet", days: int = 7) -> str:
     out = [
         f"<h2>Paper trading (mainnet, no XRP spent)</h2><div class=card>{state} "
         f"<span class=small>{sc['n'] or 0} scans today, {speed}</span><div class=grid>"
-        f"<div><div class=k>Would-be trades today</div><div class=v>{len(t['traded'])}</div></div>"
-        f"<div><div class=k>Profit after fees</div><div class=v>{_fmt(t['profit'])}</div></div>"
-        f"<div><div class=k>Missed on speed</div><div class=v>{len(t['too_fast'])}</div>"
-        f"<div class=small>worth {_fmt(t['lost_to_speed'])}</div></div>"
-        f"<div><div class=k>Unapproved tokens</div><div class=v>{len(t['others'])}</div>"
-        f"<div class=small>worth {_fmt(t['other_profit'])}</div></div>"
+        f"<div><div class=k>Would-be trades today</div><div class=v>{t['bursts']}</div></div>"
+        f"<div><div class=k>Profit after fees</div><div class=v>{_fmt(t['bursts_profit'])}</div></div>"
+        f"<div><div class=k>Missed on speed</div><div class=v>{t['bursts_missed']}</div>"
+        f"<div class=small>worth {_fmt(t['bursts_missed_profit'])}</div></div>"
+        f"<div><div class=k>Unapproved tokens</div><div class=v>{t['bursts_other']}</div>"
+        f"<div class=small>worth {_fmt(t['bursts_other_profit'])}</div></div>"
         "</div><div class=small>Approved tokens only, same rules and fees as the bots. A gap still open after the "
         "next ledger counts as a would-be trade; one gone by then counts as missed on speed.</div></div>",
         "<div class='card scroll'><table><tr><th>Day</th><th>Trades</th><th>Profit</th>"
@@ -368,9 +368,9 @@ def render_paper(db: DB, network: str = "mainnet", days: int = 7) -> str:
         if not d["scans"]["n"]:
             continue
         react = f"{(d['scans']['ld'] or 0) / 1000:.2f}s" if d["scans"]["l"] else f"{(d['scans']['fd'] or 0) / 1000:.0f}s"
-        out.append(f"<tr><td style='white-space:nowrap'>{day[5:]}</td><td>{len(d['traded'])}</td><td>{_fmt(d['profit'])}</td>"
-                   f"<td>{len(d['too_fast'])}<div class=small>{_fmt(d['lost_to_speed'])}</div></td>"
-                   f"<td>{len(d['others'])}<div class=small>{_fmt(d['other_profit'])}</div></td><td>{react}</td></tr>")
+        out.append(f"<tr><td style='white-space:nowrap'>{day[5:]}</td><td>{d['bursts']}</td><td>{_fmt(d['bursts_profit'])}</td>"
+                   f"<td>{d['bursts_missed']}<div class=small>{_fmt(d['bursts_missed_profit'])}</div></td>"
+                   f"<td>{d['bursts_other']}<div class=small>{_fmt(d['bursts_other_profit'])}</div></td><td>{react}</td></tr>")
     out.append("</table><div class=small>Trades = would-be trades on approved tokens. Missed = gone before "
                "we could act (speed). Unappr. = gaps on tokens you haven't approved. Speed = how soon after "
                "each ledger we decide.</div></div>")

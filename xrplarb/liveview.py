@@ -91,9 +91,9 @@ def live_data(db: DB, network: str = "testnet") -> Dict:
             "scanning": _age(last[0]["ts"]) < 120,
             "live": bool(last[0]["live"]),
             "speed": round((d["scans"]["ld"] or 0) / 1000, 2) if d["scans"]["l"] else None,
-            "trades": len(d["traded"]),
-            "profit": round(float(d["profit"]), 4),
-            "missed": len(d["too_fast"]),
+            "trades": d["bursts"],
+            "profit": round(float(d["bursts_profit"]), 4),
+            "missed": d["bursts_missed"],
         }
         # would-be trades (gap still open a ledger later) and gaps missed on speed
         for e in db.query(

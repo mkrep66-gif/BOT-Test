@@ -332,6 +332,16 @@ def paper_day(db: DB, network: str, day: str) -> dict:
     )
     for k, src in (("profit", "traded"), ("lost_to_speed", "too_fast"), ("other_profit", "others")):
         d[k] = sum((episode_profit(e) for e in d[src]), ZERO)
+    # Gaps come in bursts: one big trade opens many loops at once through the
+    # same pools, and taking one closes the others. Count each burst (gaps
+    # first seen in the same ledger) once, at its best loop - the realistic number.
+    for k, src in (("bursts", "traded"), ("bursts_missed", "too_fast"), ("bursts_other", "others")):
+        best: Dict[int, Decimal] = {}
+        for e in d[src]:
+            li = e["ledger_first"] or 0
+            best[li] = max(best.get(li, ZERO), episode_profit(e))
+        d[k] = len(best)
+        d[k + "_profit"] = sum(best.values(), ZERO)
     return d
 
 
@@ -346,7 +356,8 @@ def daily_report(db: DB, network: str, day: str) -> tuple[str, str]:
     missed on speed."""
     d = paper_day(db, network, day)
     eps, scans, traded, too_fast, stuck, others = (d[k] for k in ("episodes", "scans", "traded", "too_fast", "stuck", "others"))
-    profit, lost_to_speed, other_profit = d["profit"], d["lost_to_speed"], d["other_profit"]
+    profit, lost_to_speed, other_profit = d["bursts_profit"], d["bursts_missed_profit"], d["bursts_other_profit"]
+    n_tr, n_fast, n_oth = d["bursts"], d["bursts_missed"], d["bursts_other"]
     first = episode_profit
 
     by_route: Dict[str, List] = defaultdict(list)
@@ -366,10 +377,11 @@ def daily_report(db: DB, network: str, day: str) -> tuple[str, str]:
         "",
         "Read-only: live mainnet prices, the bots' own rules, approved tokens only. No keys, no XRP spent.",
         "",
-        f"- **Would-be trades:** {len(traded)} (all-or-nothing, so each is a win or a cancelled no-fill - never a loss)",
-        f"- **Profit after all fees:** {profit:+.4f} XRP" + (f" (average {profit / len(traded):+.4f} per trade)" if traded else ""),
-        f"- **Gaps that closed before we could act (speed):** {len(too_fast)}, worth {lost_to_speed:+.4f} XRP",
-        f"- Gaps on watch-only (unapproved) tokens we'd have caught: {len(others)}, worth {other_profit:+.4f} XRP",
+        f"- **Would-be trades:** {n_tr} (from {len(traded)} profitable loops - a burst of loops through the same "
+        "pools counts once, at its best loop; all-or-nothing, so each is a win or a cancelled no-fill - never a loss)",
+        f"- **Profit after all fees:** {profit:+.4f} XRP" + (f" (average {profit / n_tr:+.4f} per trade)" if n_tr else ""),
+        f"- **Gaps that closed before we could act (speed):** {n_fast} ({len(too_fast)} loops), worth {lost_to_speed:+.4f} XRP",
+        f"- Gaps on watch-only (unapproved) tokens we'd have caught: {n_oth} ({len(others)} loops), worth {other_profit:+.4f} XRP",
         f"- Gaps that stayed open suspiciously long (left out - probably not really tradeable): {len(stuck)}",
         f"- Scans: {scans['n'] or 0}"
         + (f"; {scans['l']} on the live feed, deciding on average {(scans['ld'] or 0) / 1000:.2f} s after each ledger closed"
@@ -389,9 +401,9 @@ def daily_report(db: DB, network: str, day: str) -> tuple[str, str]:
     if not eps:
         L += ["No profitable gaps at all this day.", ""]
     short = (
-        f"Paper trading {day}: {len(traded)} would-be trades, {profit:+.4f} XRP after fees. "
-        f"Missed on speed: {len(too_fast)} ({lost_to_speed:+.4f} XRP). "
-        f"Unapproved tokens: {len(others)} ({other_profit:+.4f} XRP). "
+        f"Paper trading {day}: {n_tr} would-be trades, {profit:+.4f} XRP after fees. "
+        f"Missed on speed: {n_fast} ({lost_to_speed:+.4f} XRP). "
+        f"Unapproved tokens: {n_oth} ({other_profit:+.4f} XRP). "
         + (f"Best: {label(best[0][0])} ({sum(first(e) for e in best[0][1]):+.4f})." if best else "")
     )
     return "\n".join(L), short
