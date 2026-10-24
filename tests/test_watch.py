@@ -206,3 +206,13 @@ def test_telegram_health_command():
     out = asyncio.run(server_health(0.2))
     if sys.platform.startswith("linux"):
         assert "CPU in use now" in out and "Memory:" in out and "Disk:" in out and "Paper trading" in out
+
+
+def test_telegram_commands_list():
+    from xrplarb.supervisor import TELEGRAM_MENU, commands_text
+
+    out = commands_text()
+    for k, _ in TELEGRAM_MENU:
+        assert f"/{k} - " in out
+        assert k.islower() and k.isalnum()           # Telegram's rule for menu commands
+    assert "xrplcommands" in out

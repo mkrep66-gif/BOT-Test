@@ -93,12 +93,19 @@ class Alerter:
                 s.login(em["username"], em["password"])
                 s.send_message(msg)
 
-    async def poll_commands(self, handler: Callable[[str], Awaitable[str]]) -> None:
-        """Listen for Telegram commands from YOUR chat only (/status, /kill <pin>, /resume <pin>)."""
+    async def poll_commands(self, handler: Callable[[str], Awaitable[str]], menu=()) -> None:
+        """Listen for Telegram commands from YOUR chat only (/status, /kill <pin>, /resume <pin>).
+        `menu`: (command, description) pairs shown in Telegram's "/" menu."""
         if not (self.tg_token and self.tg_chat):
             return
         url = f"https://api.telegram.org/bot{self.tg_token}/getUpdates"
         async with httpx.AsyncClient(timeout=40) as c:
+            if menu:
+                try:  # best effort: the menu is a convenience
+                    await c.post(f"https://api.telegram.org/bot{self.tg_token}/setMyCommands",
+                                 json={"commands": [{"command": k, "description": d} for k, d in menu]})
+                except Exception as e:
+                    log.warning("telegram menu not set: %s", scrub(str(e)))
             while True:
                 try:
                     r = await c.get(url, params={"timeout": 30, "offset": self._tg_offset})

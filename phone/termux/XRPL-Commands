@@ -1,0 +1,26 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# Every shortcut and Telegram command in one list. Runs on the phone - no passphrase.
+cat <<'LIST'
+XRPL bots - your commands
+
+On this phone (Termux):
+  xrplstatus      Testnet bots: running? trades, wins, profit today
+  xrplpaper       Today's mainnet paper trading (no XRP spent)
+  xrplhealth      Server CPU, memory and disk
+  xrpldashboard   Open the private dashboard + Live page in Chrome
+                  (type close in Termux when you're done)
+  xrplstart       Start the Testnet bots
+  xrplstop        Stop the Testnet bots (normal stop, not the kill switch)
+  xrplcommands    This list
+
+On Telegram (send to your bot):
+  /status         Testnet bots: running or stopped, balances
+  /paper          Today's mainnet paper trading
+  /health         Server CPU, memory and disk
+  /kill PIN       KILL SWITCH: stop all bots, sell tokens for XRP
+  /resume PIN     Start the bots again
+  /commands       This list
+
+Mainnet trading is OFF. Never share your PIN, passphrase or keys.
+LIST
+read -n 1 -s -r -p "Tap any key to close"

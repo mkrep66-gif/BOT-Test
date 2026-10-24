@@ -39,6 +39,23 @@ NET_HEALTH_LOG_SECONDS = 3600
 BLOCKED_TAG = "on your block list"
 
 
+# Telegram commands: (command, what it does). Also shown in Telegram's "/" menu.
+TELEGRAM_MENU = (
+    ("status", "Testnet bots: running or stopped, balances"),
+    ("paper", "Today's mainnet paper trading (no XRP spent)"),
+    ("health", "Server CPU, memory and disk"),
+    ("kill", "KILL SWITCH: /kill PIN - stop all bots, sell tokens for XRP"),
+    ("resume", "/resume PIN - start the bots again"),
+    ("commands", "This list"),
+)
+
+
+def commands_text() -> str:
+    return "Telegram commands:\n" + "\n".join(f"/{k} - {d}" for k, d in TELEGRAM_MENU) + (
+        "\n\nOn your phone (Termux): xrplstatus, xrplpaper, xrplhealth, xrpldashboard, "
+        "xrplstart, xrplstop, xrplcommands")
+
+
 def paper_summary(db: DB) -> str:
     """Today's mainnet paper trading (Telegram /paper): the report's key lines."""
     from .localtime import today_local
@@ -391,7 +408,7 @@ class Supervisor:
             from .health import server_health
 
             return await server_health()
-        return "Commands: /status, /paper, /health, /kill <pin>, /resume <pin>"
+        return commands_text()  # /commands, /help, /start or anything unknown
 
     async def run(self) -> None:
         lock = RunLock(self.s.network)
@@ -416,7 +433,7 @@ class Supervisor:
             asyncio.create_task(self.stream.run()),
             asyncio.create_task(self.control_loop()),
             asyncio.create_task(self.token_recheck_loop()),
-            asyncio.create_task(self.alerter.poll_commands(self.telegram_handler)),
+            asyncio.create_task(self.alerter.poll_commands(self.telegram_handler, TELEGRAM_MENU)),
             asyncio.create_task(self.deadman_loop()),
         ]
         stop_task = asyncio.create_task(self._stop.wait())
