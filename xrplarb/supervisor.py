@@ -387,7 +387,11 @@ class Supervisor:
             return "Resuming."
         if cmd == "/paper":
             return paper_summary(self.db)
-        return "Commands: /status, /paper, /kill <pin>, /resume <pin>"
+        if cmd == "/health":
+            from .health import server_health
+
+            return await server_health()
+        return "Commands: /status, /paper, /health, /kill <pin>, /resume <pin>"
 
     async def run(self) -> None:
         lock = RunLock(self.s.network)

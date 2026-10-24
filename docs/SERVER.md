@@ -32,7 +32,7 @@ sent it, so this works across machines.
 
 **On your phone (what you use now):** Termux:Widget home-screen buttons from
 `phone/termux/` (install: `curl` them into `~/.shortcuts`, see chat). Plus your
-Telegram bot: `/status`, `/paper` (today's paper trading), `/kill <PIN>`, `/resume <PIN>`.
+Telegram bot: `/status`, `/paper` (today's paper trading), `/health` (server CPU, memory, disk), `/kill <PIN>`, `/resume <PIN>`.
 
 If you ever get a computer: `desktop/windows/*.bat` or `desktop/mac/*.command`:
 

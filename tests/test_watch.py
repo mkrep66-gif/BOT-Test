@@ -195,3 +195,14 @@ def test_live_view_paper_mode_data(env, monkeypatch):
     assert d["paper_feed"] and {x["status"] for x in d["paper_feed"]} <= {"win", "missed"}
     assert d["paper_tokens"] and d["paper_tokens"][0]["trades"] >= 1
     assert all(x["kind"] == "testnet" for x in d["feed"])   # the two modes never mix
+
+
+def test_telegram_health_command():
+    import asyncio
+    import sys
+
+    from xrplarb.health import server_health
+
+    out = asyncio.run(server_health(0.2))
+    if sys.platform.startswith("linux"):
+        assert "CPU in use now" in out and "Memory:" in out and "Disk:" in out and "Paper trading" in out
