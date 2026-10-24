@@ -318,6 +318,29 @@ def cmd_paper_report(args):
     print(f"(saved to {p})")
 
 
+def cmd_paper_verify(args):
+    from datetime import date, timedelta
+
+    from .paperverify import report, verify_day
+
+    s = _settings(args)
+    day = args.day or (date.fromisoformat(today_local()) - timedelta(days=1)).isoformat()
+
+    async def go():
+        net = _net(s)
+        try:
+            return await verify_day(DB(), net, s.network, day)
+        finally:
+            await net.close()
+
+    text = report(asyncio.run(go()))
+    out = REPORTS_DIR / f"paper_verify_{s.network}_{day}.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text)
+    print(text)
+    print(f"(saved to {out})")
+
+
 def cmd_watch_report(args):
     from .watch import watch_report
 
@@ -616,6 +639,8 @@ def main(argv=None):
     sp.add_argument("--max-scans", type=int, default=None)
     add("watch-report", cmd_watch_report, "summarise the watch-only results")
     sp = add("paper-report", cmd_paper_report, "one day of mainnet paper trading in plain English (default: yesterday)")
+    sp.add_argument("--day", default="", help="YYYY-MM-DD (your local date)")
+    sp = add("paper-verify", cmd_paper_verify, "check a day's paper-trading gaps against the real ledger (default: yesterday)")
     sp.add_argument("--day", default="", help="YYYY-MM-DD (your local date)")
     sp = add("dashboard", cmd_dashboard, "start the phone dashboard")
     sp.add_argument("--host")
