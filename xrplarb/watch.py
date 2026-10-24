@@ -305,6 +305,36 @@ def watch_report(db: DB, network: str = "mainnet", out_dir: Path = REPORTS_DIR) 
 DAILY_SEND_HOUR = 7.5  # local time: 07:30
 
 
+def episode_profit(e) -> Decimal:
+    """A would-be trade's profit: what the gap showed when first seen (when a bot would fire)."""
+    return Decimal(e["first_safe_profit_xrp"] or e["max_safe_profit_xrp"] or "0")
+
+
+def paper_day(db: DB, network: str, day: str) -> dict:
+    """One local day of paper trading, counted the same way everywhere (daily
+    report, Telegram /paper, dashboard). See daily_report for the rules."""
+    netname = f"{network}-watch"
+    start, end = day_start_utc(day), day_start_utc(next_day(day))
+    eps = db.query("SELECT * FROM watch_episodes WHERE network=? AND first_seen>=? AND first_seen<?", (netname, start, end))
+    scans = db.query(
+        "SELECT COUNT(*) n, SUM(COALESCE(live, 0)) l, AVG(CASE WHEN live=1 THEN duration_ms END) ld, "
+        "AVG(CASE WHEN COALESCE(live, 0)=0 THEN duration_ms END) fd "
+        "FROM watch_scans WHERE network=? AND ts>=? AND ts<?", (netname, start, end)
+    )[0]
+    ours = [e for e in eps if e["would_trade"]]
+    d = dict(
+        episodes=eps,
+        scans=scans,
+        traded=[e for e in ours if 2 <= e["scans"] <= SUSPICIOUS_SCANS],
+        too_fast=[e for e in ours if e["scans"] < 2],
+        stuck=[e for e in ours if e["scans"] > SUSPICIOUS_SCANS],
+        others=[e for e in eps if not e["would_trade"] and 2 <= e["scans"] <= SUSPICIOUS_SCANS],
+    )
+    for k, src in (("profit", "traded"), ("lost_to_speed", "too_fast"), ("other_profit", "others")):
+        d[k] = sum((episode_profit(e) for e in d[src]), ZERO)
+    return d
+
+
 def daily_report(db: DB, network: str, day: str) -> tuple[str, str]:
     """Paper-trading results for one local day. Returns (full markdown, short
     Telegram text).
@@ -314,26 +344,10 @@ def daily_report(db: DB, network: str, day: str) -> tuple[str, str]:
     at the profit it showed when first seen - after network, pool and issuer
     fees and our slippage margin. A gap gone by the next scan is counted as
     missed on speed."""
-    netname = f"{network}-watch"
-    start, end = day_start_utc(day), day_start_utc(next_day(day))
-    eps = db.query("SELECT * FROM watch_episodes WHERE network=? AND first_seen>=? AND first_seen<?", (netname, start, end))
-    scans = db.query(
-        "SELECT COUNT(*) n, SUM(COALESCE(live, 0)) l, AVG(CASE WHEN live=1 THEN duration_ms END) ld, "
-        "AVG(CASE WHEN COALESCE(live, 0)=0 THEN duration_ms END) fd "
-        "FROM watch_scans WHERE network=? AND ts>=? AND ts<?", (netname, start, end)
-    )[0]
-
-    def first(e) -> Decimal:
-        return Decimal(e["first_safe_profit_xrp"] or e["max_safe_profit_xrp"] or "0")
-
-    ours = [e for e in eps if e["would_trade"]]
-    traded = [e for e in ours if 2 <= e["scans"] <= SUSPICIOUS_SCANS]
-    too_fast = [e for e in ours if e["scans"] < 2]
-    stuck = [e for e in ours if e["scans"] > SUSPICIOUS_SCANS]
-    others = [e for e in eps if not e["would_trade"] and 2 <= e["scans"] <= SUSPICIOUS_SCANS]
-    profit = sum((first(e) for e in traded), ZERO)
-    lost_to_speed = sum((first(e) for e in too_fast), ZERO)
-    other_profit = sum((first(e) for e in others), ZERO)
+    d = paper_day(db, network, day)
+    eps, scans, traded, too_fast, stuck, others = (d[k] for k in ("episodes", "scans", "traded", "too_fast", "stuck", "others"))
+    profit, lost_to_speed, other_profit = d["profit"], d["lost_to_speed"], d["other_profit"]
+    first = episode_profit
 
     by_route: Dict[str, List] = defaultdict(list)
     for e in traded:

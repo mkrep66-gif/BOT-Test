@@ -66,6 +66,8 @@ CREATE TABLE IF NOT EXISTS watch_scans (
   id INTEGER PRIMARY KEY, ts TEXT, network TEXT, ledger_index INTEGER,
   routes_checked INTEGER, profitable INTEGER, duration_ms INTEGER
 );
+CREATE INDEX IF NOT EXISTS watch_scans_ts ON watch_scans(network, ts);
+CREATE INDEX IF NOT EXISTS watch_eps_first ON watch_episodes(network, first_seen);
 """
 
 

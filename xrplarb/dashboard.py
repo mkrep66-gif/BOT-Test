@@ -292,16 +292,7 @@ def render_home(db: DB, net: str, csrf: str) -> str:
         out.append(f"<tr><td class=small>{fmt_local(r['ts'])}</td><td>{html.escape(scrub(r['message'] or ''))[:300]}</td></tr>")
     out.append("</table></div>")
 
-    w = db.query(
-        "SELECT COUNT(*) n, SUM(CASE WHEN scans>=2 AND scans<=75 AND all_tokens_pass=1 THEN 1 ELSE 0 END) c, "
-        "MIN(first_seen) f FROM watch_episodes WHERE network='mainnet-watch'")
-    if w and w[0]["n"]:
-        out.append(
-            "<h2>Mainnet watch-only</h2><div class=card>"
-            f"Since {html.escape((w[0]['f'] or '')[:10])}: {w[0]['n']} profitable gaps seen, "
-            f"{w[0]['c'] or 0} realistically catchable with safe tokens. "
-            "<div class=small>Full report: python -m xrplarb watch-report</div></div>"
-        )
+    out.append(render_paper(db))
     out.append(f"<h2>Spreadsheet</h2><a class=btn href='/export.xlsx?net={html.escape(net)}'>Download Excel (tax + logs)</a>")
     out.append(
         "<h2>Controls</h2><div class=card><form method=post action=/kill>"
@@ -313,6 +304,67 @@ def render_home(db: DB, net: str, csrf: str) -> str:
         "<p class=small>Resume also clears loss-cap stops and crash stops.</p></div>"
         "<p><a href=/logout>Log out</a></p>"
     )
+    return "".join(out)
+
+
+def render_paper(db: DB, network: str = "mainnet", days: int = 7) -> str:
+    """Mainnet paper trading: today, the last few days, the latest would-be trades."""
+    from datetime import date, timedelta
+
+    from .watch import SUSPICIOUS_SCANS, episode_profit, paper_day
+
+    netname = f"{network}-watch"
+    last = db.query("SELECT ts, live FROM watch_scans WHERE network=? ORDER BY ts DESC LIMIT 1", (netname,))
+    if not last:
+        return ""  # paper trading has never run on this machine
+    age = time.time() - _ts(last[0]["ts"])
+    today = today_local()
+    t = paper_day(db, network, today)
+    sc = t["scans"]
+    if age > 120:
+        state = f"<span class='pill bad'>not scanning (last scan {fmt_local(last[0]['ts'])})</span>"
+    elif last[0]["live"]:
+        state = "<span class='pill good'>live feed</span>"
+    else:
+        state = "<span class='pill bad'>slow full reads (live feed reconnecting)</span>"
+    speed = f"deciding {(sc['ld'] or 0) / 1000:.2f} s after each ledger closes" if sc["l"] else "no live scans yet today"
+    out = [
+        f"<h2>Paper trading (mainnet, no XRP spent)</h2><div class=card>{state} "
+        f"<span class=small>{sc['n'] or 0} scans today, {speed}</span><div class=grid>"
+        f"<div><div class=k>Would-be trades today</div><div class=v>{len(t['traded'])}</div></div>"
+        f"<div><div class=k>Profit after fees</div><div class=v>{_fmt(t['profit'])}</div></div>"
+        f"<div><div class=k>Missed on speed</div><div class=v>{len(t['too_fast'])}</div>"
+        f"<div class=small>worth {_fmt(t['lost_to_speed'])}</div></div>"
+        f"<div><div class=k>Unapproved tokens</div><div class=v>{len(t['others'])}</div>"
+        f"<div class=small>worth {_fmt(t['other_profit'])}</div></div>"
+        "</div><div class=small>Approved tokens only, same rules and fees as the bots. A gap still open after the "
+        "next ledger counts as a would-be trade; one gone by then counts as missed on speed.</div></div>",
+        "<div class='card scroll'><table><tr><th>Day</th><th>Trades</th><th>Profit</th>"
+        "<th>Missed</th><th>Unappr.</th><th>Speed</th></tr>",
+    ]
+    for i in range(days):
+        day = (date.fromisoformat(today) - timedelta(days=i)).isoformat()
+        d = t if i == 0 else paper_day(db, network, day)
+        if not d["scans"]["n"]:
+            continue
+        react = f"{(d['scans']['ld'] or 0) / 1000:.2f}s" if d["scans"]["l"] else f"{(d['scans']['fd'] or 0) / 1000:.0f}s"
+        out.append(f"<tr><td style='white-space:nowrap'>{day[5:]}</td><td>{len(d['traded'])}</td><td>{_fmt(d['profit'])}</td>"
+                   f"<td>{len(d['too_fast'])}<div class=small>{_fmt(d['lost_to_speed'])}</div></td>"
+                   f"<td>{len(d['others'])}<div class=small>{_fmt(d['other_profit'])}</div></td><td>{react}</td></tr>")
+    out.append("</table><div class=small>Trades = would-be trades on approved tokens. Missed = gone before "
+               "we could act (speed). Unappr. = gaps on tokens you haven't approved. Speed = how soon after "
+               "each ledger we decide.</div></div>")
+    recent = db.query(
+        "SELECT * FROM watch_episodes WHERE network=? AND would_trade=1 AND scans>=2 AND scans<=? "
+        "ORDER BY first_seen DESC LIMIT 10", (netname, SUSPICIOUS_SCANS))
+    out.append("<h3>Latest would-be trades</h3><div class='card scroll'><table><tr><th>When</th><th>Route</th>"
+               "<th>Profit</th><th>Size</th><th>Open for</th></tr>")
+    for e in recent:
+        out.append(f"<tr><td>{fmt_local(e['first_seen'])}</td><td>{html.escape(_label(e['route']))}</td>"
+                   f"<td>{_fmt(episode_profit(e))}</td><td>{D(e['best_size_xrp']):.1f}</td><td>{e['scans']} ledgers</td></tr>")
+    if not recent:
+        out.append("<tr><td colspan=5>None yet.</td></tr>")
+    out.append("</table></div>")
     return "".join(out)
 
 

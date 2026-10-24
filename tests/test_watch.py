@@ -159,3 +159,19 @@ def test_telegram_paper_command_summarises_today(env):
 
     out = paper_summary(DB())
     assert out.startswith("Paper trading today") and "Would-be trades: 0" in out and "**" not in out
+
+
+def test_dashboard_shows_paper_trading(env, monkeypatch):
+    import xrplarb.watch as watch
+    from xrplarb.config import Settings
+    from xrplarb.dashboard import render_paper
+    from xrplarb.db import DB
+
+    db = DB()
+    assert render_paper(db) == ""                    # never ran here: no section at all
+    monkeypatch.setattr(watch, "Net", lambda *a, **k: FakeLedger(gap_scans=3))
+    asyncio.run(watch.run_watch(Settings(network="mainnet", scan_interval_seconds=0), db, max_scans=6))
+    db.execute("UPDATE watch_episodes SET would_trade=1")
+    out = render_paper(db)
+    assert "Paper trading (mainnet" in out and "Would-be trades today" in out
+    assert "→ XRP" in out and "3 ledgers" in out      # the would-be trade is listed
