@@ -1,0 +1,27 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# Server health: CPU now (overall and per part), memory, disk, uptime. Read-only.
+ssh -o ServerAliveInterval=15 botadmin@157.245.255.65 'bash -s' <<'REMOTE'
+names=(xrplarb-bots xrplarb-watch xrplarb-dashboard xrplarb-labnoise)
+labels=("Testnet bots" "Paper trading" "Dashboard" "Practice market")
+pids=()
+for s in "${names[@]}"; do pids+=("$(systemctl show -p MainPID --value "$s")"); done
+list=$(printf '%s,' "${pids[@]}" | sed 's/,0,/,/g; s/^0,//; s/,0$//; s/,$//')
+# two samples one second apart: the second shows CPU use right now
+snap=$(top -b -n 2 -d 1 ${list:+-p "$list"} | awk '/^top -/{n++} n==2')
+idle=$(echo "$snap" | awk -F',' '/Cpu\(s\)/{for(i=1;i<=NF;i++) if($i ~ /id/){gsub(/[^0-9.]/,"",$i); print $i}}')
+echo "Server health - $(date '+%Y-%m-%d %H:%M %Z')"
+printf '  CPU in use now:   %s%%\n' "$(awk -v i="${idle:-100}" 'BEGIN{printf "%.0f", 100-i}')"
+for k in "${!names[@]}"; do
+  pid=${pids[$k]}
+  if [ "$pid" = "0" ]; then printf '  %-16s  not running\n' "${labels[$k]}"; continue; fi
+  cpu=$(echo "$snap" | awk -v p="$pid" '$1==p{print $9}')
+  mem=$(ps -o rss= -p "$pid" | awk '{printf "%.0f", $1/1024}')
+  printf '  %-16s  CPU %4s%%   memory %4s MB\n' "${labels[$k]}" "${cpu:-0}" "$mem"
+done
+free -m | awk '/^Mem:/{printf "  Memory:           %d of %d MB used (%d%%)\n", $3, $2, $3*100/$2}'
+df -h / | awk 'NR==2{printf "  Disk:             %s of %s used (%s)\n", $3, $2, $5}'
+echo "  Up since:         $(uptime -s)"
+REMOTE
+echo
+echo "Rough guide: CPU under 50% and memory under 80% is comfortable."
+read -n 1 -s -r -p "Tap any key to close"
