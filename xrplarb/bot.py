@@ -264,6 +264,7 @@ class Bot:
             slippage_buffer=buffer,
             max_fee_drops=self.s.max_network_fee_drops,
             fee_units=units,
+            quick_reject=True,  # same answers, far less work (proven on paper trading first)
         )
         if not opps:
             return

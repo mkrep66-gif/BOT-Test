@@ -25,7 +25,8 @@ NETWORKS = {
         # Price reads are spread across all of these.
         "rpc": [
             "https://s.altnet.rippletest.net:51234/",
-            "https://testnet.xrpl-labs.com/",
+            # testnet.xrpl-labs.com left out (2026-10-24): 200 failures and 165
+            # back-offs in two days vs 1 each here; likely behind many late trades
             "https://clio.altnet.rippletest.net:51234/",
         ],
         # live "ledger closed" feeds (WebSocket), first that answers is used

@@ -80,8 +80,7 @@ def evaluate(
     # concave function of size that starts at 0. If even the smallest size we
     # would trade loses money, every larger size loses more: skip the (costly)
     # size search. This rules out most gaps that only exist at the very top of
-    # an order book (same answers, ~50x faster). On for paper trading; the
-    # Testnet bots get it once it has proven itself there.
+    # an order book (same answers, ~50x faster).
     probe = quote_loop(edges, min_size) if quick_reject else None
     if probe is not None and probe.filled and probe.gross_profit <= 0:
         opp.size_xrp, opp.quote = min_size, probe
