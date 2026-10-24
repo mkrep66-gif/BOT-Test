@@ -67,6 +67,12 @@ CREATE TABLE IF NOT EXISTS watch_scans (
   routes_checked INTEGER, profitable INTEGER, duration_ms INTEGER
 );
 CREATE INDEX IF NOT EXISTS watch_scans_ts ON watch_scans(network, ts);
+CREATE TABLE IF NOT EXISTS backrun_paper (
+  id INTEGER PRIMARY KEY, ts TEXT NOT NULL, network TEXT, ledger_target INTEGER,
+  trigger_hash TEXT, trigger_account TEXT, trigger_type TEXT, route TEXT, hops INTEGER,
+  size_xrp TEXT, safe_profit_xrp TEXT, would_trade INTEGER, decided_ms INTEGER, since_close_ms INTEGER
+);
+CREATE INDEX IF NOT EXISTS backrun_ts ON backrun_paper(network, ts);
 CREATE INDEX IF NOT EXISTS watch_eps_first ON watch_episodes(network, first_seen);
 """
 

@@ -134,7 +134,49 @@ async def verify_day(db: DB, net: Net, network: str, day: str, look_ahead: int =
         kind = "would-be" if e["would_trade"] and e["scans"] >= 2 else "missed" if e["would_trade"] else "unapproved"
         results.append({"route": e["route"], "kind": kind, "verdict": verdict, "who": who,
                         "profit": Decimal(e["first_safe_profit_xrp"] or e["max_safe_profit_xrp"] or "0")})
-    return {"day": day, "results": results, "ledgers_read": len(cache)}
+    backruns = await verify_backruns(db, net, network, day)
+    return {"day": day, "results": results, "backruns": backruns, "ledgers_read": len(cache)}
+
+
+async def verify_backruns(db: DB, net: Net, network: str, day: str) -> List[Dict]:
+    """For each paper backrun chance: did the pending trade that opened it land
+    in the target ledger, and did another bot take the gap behind it?"""
+    start, end = day_start_utc(day), day_start_utc(next_day(day))
+    rows = db.query(
+        "SELECT * FROM backrun_paper WHERE network=? AND ts>=? AND ts<? AND would_trade=1 ORDER BY ts",
+        (f"{network}-backrun", start, end))
+    # one per target ledger: the best loop (the same burst rule as the report)
+    best: Dict[int, dict] = {}
+    for r in rows:
+        if r["ledger_target"] not in best or Decimal(r["safe_profit_xrp"]) > Decimal(best[r["ledger_target"]]["safe_profit_xrp"]):
+            best[r["ledger_target"]] = r
+    markets = {m for r in best.values() for m in route_markets(r["route"])}
+    pools = await _pool_accounts(net, markets)
+    cache: Dict[int, List[dict]] = {}
+    out = []
+    for li, r in sorted(best.items()):
+        ms = set(route_markets(r["route"]))
+        verdict, who = "trigger didn't land", None
+        for led in (li, li + 1):  # it may slip one ledger
+            try:
+                txs = await _ledger_txs(net, led, cache)
+            except Exception:
+                verdict = "unknown"
+                break
+            trig = next((t for t in txs if (t.get("hash") or (t.get("tx_json") or {}).get("hash")) == r["trigger_hash"]), None)
+            if trig is None:
+                continue
+            tmeta = trig.get("meta") or trig.get("metaData") or {}
+            if tmeta.get("TransactionResult") != "tesSUCCESS":
+                verdict = "trigger failed"
+                break
+            after = [t for t in txs if (t.get("meta") or t.get("metaData") or {}).get("TransactionIndex", -1) > tmeta.get("TransactionIndex", 0)]
+            v, w = classify(list(ms), after, pools)
+            verdict, who = ("taken by another bot", w) if v == "arbitrage" else ("left open", None)
+            break
+        out.append({"ledger": li, "verdict": verdict, "who": who, "profit": Decimal(r["safe_profit_xrp"] or "0"),
+                    "decided_ms": r["decided_ms"]})
+    return out
 
 
 def report(v: Dict) -> str:
@@ -142,7 +184,7 @@ def report(v: Dict) -> str:
     lines = [f"# Paper gaps checked against the real ledger: {v['day']}", "",
              f"Read-only check of {len(res)} gaps ({v['ledgers_read']} ledgers read). For each gap: what happened in "
              "its markets in the ledger(s) right after it was last seen.", ""]
-    if not res:
+    if not res and not v.get("backruns"):
         return "\n".join(lines + ["No gaps that day."])
     names = {"arbitrage": "another bot arbitraged the same loop (real gap)",
              "trade": "an ordinary trade moved a price (probably real)",
@@ -160,6 +202,22 @@ def report(v: Dict) -> str:
                 worth = sum(r["profit"] for r in group if r["verdict"] == verdict)
                 lines.append(f"- {c[verdict]} - {names[verdict]}, worth {worth:+.4f} XRP")
         rivals = Counter(r["who"] for r in group if r["who"])
+        if rivals:
+            lines.append("- Who took them: " + ", ".join(f"{w[:8]}… ×{n}" for w, n in rivals.most_common(5)))
+        lines.append("")
+    br = v.get("backruns") or []
+    if br:
+        c = Counter(r["verdict"] for r in br)
+        lines += [f"## Backrun chances (gaps a pending trade was about to open): {len(br)}", ""]
+        for verdict, text in (("left open", "the trade landed and nobody took the gap behind it - ours to win"),
+                              ("taken by another bot", "the trade landed and another bot took the gap (we'd have raced them)"),
+                              ("trigger didn't land", "the trade that would open it never made it into the ledger"),
+                              ("trigger failed", "the trade failed, so no gap opened"),
+                              ("unknown", "couldn't read the ledger")):
+            if c[verdict]:
+                worth = sum(r["profit"] for r in br if r["verdict"] == verdict)
+                lines.append(f"- {c[verdict]} - {text}, worth {worth:+.4f} XRP")
+        rivals = Counter(r["who"] for r in br if r["who"])
         if rivals:
             lines.append("- Who took them: " + ", ".join(f"{w[:8]}… ×{n}" for w, n in rivals.most_common(5)))
         lines.append("")

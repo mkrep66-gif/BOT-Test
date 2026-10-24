@@ -25,6 +25,7 @@ from .amounts import ZERO, Asset
 from .config import REPORTS_DIR, Settings, blocked_reason, load_blocklist, load_token_entries, load_token_pairs
 from .alerts import Alerter
 from .db import DB, now_iso
+from .backrun import PaperBackrunner
 from .livefeed import LiveFeed
 from .localtime import day_start_utc, local_tz, next_day, tz_label
 from .market import MarketFeed
@@ -80,9 +81,13 @@ async def run_watch(settings: Settings, db: Optional[DB] = None, max_scans: Opti
     # closes. If it isn't healthy, fall back to reading every market in full.
     live = LiveFeed(net, settings.ws_urls, depth=settings.book_depth) if settings.use_ledger_stream and settings.ws_urls else None
     live_task = None
+    backrun = backrun_task = None
     if live:
         live.configure(tokens, pairs)
         live_task = asyncio.create_task(live.run())
+        # paper backrunning: gaps a pending trade is about to open (see backrun.py)
+        backrun = PaperBackrunner(live, db, settings, settings.network, approved, lambda: routes)
+        backrun_task = asyncio.create_task(backrun.run())
     started = last_stats = time.time()
     netname = f"{settings.network}-watch"
     open_eps: Dict[str, dict] = {}  # route key -> running episode
@@ -179,7 +184,7 @@ async def run_watch(settings: Settings, db: Optional[DB] = None, max_scans: Opti
             log.info("watch: %d scans, %d routes, last scan %d ms", scans, len(routes), dur)
         if live and time.time() - last_stats > 3600:
             last_stats = time.time()
-            log.info("live feed: %s", live.stats)
+            log.info("live feed: %s; paper backrun: %s", live.stats, backrun.stats if backrun else "-")
             if live.stats["drift"]:
                 db.event(netname, "watch", "WARN", "live-drift", f"live feed corrected itself {live.stats['drift']} time(s)")
         await maybe_send_daily(db, settings.network, alerter)
@@ -188,6 +193,9 @@ async def run_watch(settings: Settings, db: Optional[DB] = None, max_scans: Opti
     if live:
         live.stop()
         live_task.cancel()
+    if backrun:
+        backrun.stop()
+        backrun_task.cancel()
 
 
 def watch_report(db: DB, network: str = "mainnet", out_dir: Path = REPORTS_DIR) -> Path:
@@ -342,6 +350,16 @@ def paper_day(db: DB, network: str, day: str) -> dict:
             best[li] = max(best.get(li, ZERO), episode_profit(e))
         d[k] = len(best)
         d[k + "_profit"] = sum(best.values(), ZERO)
+    # paper backrunning (gaps a pending trade was about to open), approved tokens only
+    br = db.query(
+        "SELECT ledger_target, safe_profit_xrp, decided_ms FROM backrun_paper WHERE network=? AND ts>=? AND ts<? "
+        "AND would_trade=1", (f"{network}-backrun", start, end))
+    best_br: Dict[int, Decimal] = {}
+    for r in br:
+        best_br[r["ledger_target"]] = max(best_br.get(r["ledger_target"], ZERO), Decimal(r["safe_profit_xrp"] or "0"))
+    d["backrun"], d["backrun_loops"] = len(best_br), len(br)
+    d["backrun_profit"] = sum(best_br.values(), ZERO)
+    d["backrun_ms"] = int(sum(r["decided_ms"] or 0 for r in br) / len(br)) if br else None
     return d
 
 
@@ -383,6 +401,9 @@ def daily_report(db: DB, network: str, day: str) -> tuple[str, str]:
         f"- **Gaps that closed before we could act (speed):** {n_fast} ({len(too_fast)} loops), worth {lost_to_speed:+.4f} XRP",
         f"- Gaps on watch-only (unapproved) tokens we'd have caught: {n_oth} ({len(others)} loops), worth {other_profit:+.4f} XRP",
         f"- Gaps that stayed open suspiciously long (left out - probably not really tradeable): {len(stuck)}",
+        f"- **Backrun chances (gaps a pending trade was about to open):** {d['backrun']}"
+        + (f" ({d['backrun_loops']} loops), worth {d['backrun_profit']:+.4f} XRP, decided {d['backrun_ms']} ms after "
+           "seeing the trade - check them with paper-verify" if d["backrun"] else ""),
         f"- Scans: {scans['n'] or 0}"
         + (f"; {scans['l']} on the live feed, deciding on average {(scans['ld'] or 0) / 1000:.2f} s after each ledger closed"
            if scans["l"] else "")
@@ -404,6 +425,7 @@ def daily_report(db: DB, network: str, day: str) -> tuple[str, str]:
         f"Paper trading {day}: {n_tr} would-be trades, {profit:+.4f} XRP after fees. "
         f"Missed on speed: {n_fast} ({lost_to_speed:+.4f} XRP). "
         f"Unapproved tokens: {n_oth} ({other_profit:+.4f} XRP). "
+        f"Backrun chances: {d['backrun']} ({d['backrun_profit']:+.4f} XRP). "
         + (f"Best: {label(best[0][0])} ({sum(first(e) for e in best[0][1]):+.4f})." if best else "")
     )
     return "\n".join(L), short

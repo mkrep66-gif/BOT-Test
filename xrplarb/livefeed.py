@@ -233,6 +233,7 @@ class LiveFeed:
         self._pending: Dict[int, asyncio.Future] = {}
         self.timing = (0, 0)  # last ledger: (ms waiting for its transactions, ms re-reading changed books)
         self.ready_ms: List[int] = []
+        self.latest_snapshot: Optional[MarketSnapshot] = None  # newest snapshot (also used by the backrunner)
         self.server_delays: List[Tuple[str, Optional[float]]] = []  # last ranking, fastest first
         self.server = ""  # the server we're connected to
         self.rank_every_s = 6 * 3600
@@ -474,6 +475,7 @@ class LiveFeed:
                 if self._ready.full():
                     self._ready.get_nowait()  # nobody took the last one: replace it with the newer
                 self._ready.put_nowait(snap)
+                self.latest_snapshot = snap
                 self.ready_ms = (self.ready_ms + [int((time.time() - closed_at) * 1000)])[-500:]
                 self._background()
             except asyncio.CancelledError:

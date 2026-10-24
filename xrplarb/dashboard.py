@@ -357,6 +357,8 @@ def render_paper(db: DB, network: str = "mainnet", days: int = 7) -> str:
         f"<div class=small>worth {_fmt(t['bursts_missed_profit'])}</div></div>"
         f"<div><div class=k>Unapproved tokens</div><div class=v>{t['bursts_other']}</div>"
         f"<div class=small>worth {_fmt(t['bursts_other_profit'])}</div></div>"
+        f"<div><div class=k>Backrun chances</div><div class=v>{t['backrun']}</div>"
+        f"<div class=small>worth {_fmt(t['backrun_profit'])}</div></div>"
         "</div><div class=small>Approved tokens only, same rules and fees as the bots. A gap still open after the "
         "next ledger counts as a would-be trade; one gone by then counts as missed on speed.</div></div>",
         "<div class='card scroll'><table><tr><th>Day</th><th>Trades</th><th>Profit</th>"
