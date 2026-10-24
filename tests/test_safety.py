@@ -216,3 +216,26 @@ def test_liquidity_ignores_absurdly_priced_orders():
     r = TokenReport(asset=T)
     assess_liquidity(r, s, D(5000))
     assert r.xrp_liquidity == D(1000)
+
+
+def test_live_view_needs_login_and_shows_no_secrets(env):
+    from fastapi.testclient import TestClient
+
+    import xrplarb.secrets_store as ss
+    from xrplarb.dashboard import create_app
+    from xrplarb.db import DB
+
+    ss.set_value("dashboard.password_hash", ss.hash_password("a very long password"))
+    ss.add_wallet("testnet", "bot1", "rADDR", SEED)
+    db = DB()
+    db.balance(network="testnet", bot="bot1", xrp=D(100), tokens_value_xrp=D(0), total_value_xrp=D(100), holdings={})
+    db.heartbeat("bot1", "running", "")
+    c = TestClient(create_app(db, "testnet"))
+    assert c.get("/live", follow_redirects=False).status_code == 303
+    assert c.get("/live.json").status_code == 401
+    c.post("/login", data={"password": "a very long password"})
+    assert "PORTAL OPS" in c.get("/live").text
+    j = c.get("/live.json")
+    assert j.status_code == 200 and SEED not in j.text
+    data = j.json()
+    assert data["bots"][0]["name"] == "bot1" and data["paper"]["shown"] is False and data["testnet"]["trades"] == 0

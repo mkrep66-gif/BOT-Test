@@ -154,6 +154,25 @@ def create_app(db: Optional[DB] = None, network: str = "testnet") -> FastAPI:
             return RedirectResponse("/login", status_code=303)
         return page("XRPL bots", render_home(db, net, _csrf(s)), refresh=True)
 
+    @app.get("/live")
+    def live(request: Request):
+        if not session(request):
+            return RedirectResponse("/login", status_code=303)
+        from .liveview import LIVE_HTML
+
+        return HTMLResponse(LIVE_HTML, headers={"Cache-Control": "no-store", "X-Frame-Options": "DENY",
+                                                "Referrer-Policy": "no-referrer"})
+
+    @app.get("/live.json")
+    def live_json(request: Request, net: str = network):
+        if not session(request):
+            return Response(status_code=401)
+        from fastapi.responses import JSONResponse
+
+        from .liveview import live_data
+
+        return JSONResponse(live_data(db, net), headers={"Cache-Control": "no-store"})
+
     def _check(request: Request, csrf: str) -> Optional[Response]:
         s = session(request)
         if not s:
@@ -206,7 +225,8 @@ def render_home(db: DB, net: str, csrf: str) -> str:
     bots = [r["bot"] for r in db.query("SELECT DISTINCT bot FROM balances WHERE network=? ORDER BY bot", (net,))]
     today = today_local()
     midnight = day_start_utc(today)  # your local midnight, in the logbook's UTC
-    out = [f"<h1>XRPL bots <span class=pill>{html.escape(net)}</span></h1>"]
+    out = [f"<h1>XRPL bots <span class=pill>{html.escape(net)}</span></h1>",
+           "<p><a class=btn href=/live>Open the portal (live view)</a></p>"]
     if killed:
         out.append("<div class='card bad'><b>KILL SWITCH IS ON.</b> No trading.</div>")
 
