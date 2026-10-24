@@ -61,7 +61,7 @@ def live_data(db: DB, network: str = "testnet") -> Dict:
             "last_age": round(_age(t["last"])) if t["last"] else None,
         })
 
-    feed = []
+    feed = []  # testnet trades
     for t in db.query(
         "SELECT id, ts, bot, route, status, profit_xrp FROM trades WHERE network=? AND status IN ('win','loss','failed') "
         "ORDER BY ts DESC LIMIT 25", (network,)):
@@ -71,9 +71,21 @@ def live_data(db: DB, network: str = "testnet") -> Dict:
                      "profit": round(_num(t["profit_xrp"]), 4)})
 
     paper = {"shown": False}
+    paper_feed: List[Dict] = []
+    paper_tokens: List[Dict] = []
     last = db.query("SELECT ts, live FROM watch_scans WHERE network='mainnet-watch' ORDER BY ts DESC LIMIT 1")
     if last:
         d = paper_day(db, "mainnet", today)
+        # the tokens with the most would-be trades today orbit the portal in paper mode
+        per: Dict[str, Dict] = {}
+        for e in d["traded"]:
+            for sym in set(_symbols(e["route"])[1:-1]):
+                t = per.setdefault(sym, {"name": sym, "nick": sym, "trades": 0, "profit": 0.0, "last_age": None, "status": "running"})
+                t["trades"] += 1
+                t["profit"] = round(t["profit"] + float(episode_profit(e)), 4)
+                age = round(_age(e["first_seen"]))
+                t["last_age"] = age if t["last_age"] is None else min(t["last_age"], age)
+        paper_tokens = sorted(per.values(), key=lambda t: (-t["trades"], -t["profit"]))[:5]
         paper = {
             "shown": True,
             "scanning": _age(last[0]["ts"]) < 120,
@@ -83,14 +95,16 @@ def live_data(db: DB, network: str = "testnet") -> Dict:
             "profit": round(float(d["profit"]), 4),
             "missed": len(d["too_fast"]),
         }
+        # would-be trades (gap still open a ledger later) and gaps missed on speed
         for e in db.query(
             "SELECT id, first_seen, route, first_safe_profit_xrp, max_safe_profit_xrp, scans FROM watch_episodes "
-            "WHERE network='mainnet-watch' AND would_trade=1 AND scans>=2 AND scans<=? ORDER BY first_seen DESC LIMIT 15",
+            "WHERE network='mainnet-watch' AND would_trade=1 AND scans<=? ORDER BY first_seen DESC LIMIT 30",
             (SUSPICIOUS_SCANS,)):
-            feed.append({"id": f"p{e['id']}", "kind": "paper", "age": round(_age(e["first_seen"])),
-                         "when": fmt_local(e["first_seen"]), "bot": "paper", "tokens": _symbols(e["route"]),
-                         "status": "win", "profit": round(float(episode_profit(e)), 4)})
-    feed.sort(key=lambda x: x["age"])
+            toks = _symbols(e["route"])
+            paper_feed.append({"id": f"p{e['id']}", "kind": "paper", "age": round(_age(e["first_seen"])),
+                               "when": fmt_local(e["first_seen"]), "bot": toks[1] if len(toks) > 2 else "paper",
+                               "tokens": toks, "status": "win" if e["scans"] >= 2 else "missed",
+                               "profit": round(float(episode_profit(e)), 4)})
     attempts = r.attempts or 0
     return {
         "network": network,
@@ -106,7 +120,9 @@ def live_data(db: DB, network: str = "testnet") -> Dict:
         "killed": db.get_flag("kill") == "1",
         "bots": bots,
         "paper": paper,
+        "paper_tokens": paper_tokens,
         "feed": feed[:30],
+        "paper_feed": paper_feed,
     }
 
 
@@ -127,16 +143,16 @@ font-size:11px;letter-spacing:.1em;white-space:nowrap;background:#08120dcc}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--portal);box-shadow:0 0 8px var(--portal);animation:blink 1.6s infinite}
 .dot.off{background:var(--bad);box-shadow:0 0 8px var(--bad)}
 @keyframes blink{50%{opacity:.35}}
-.stage{position:relative;height:340px;margin:8px 0 4px}
-.portal{position:absolute;left:50%;top:50%;width:190px;height:190px;transform:translate(-50%,-50%);border-radius:50%;
+.stage{position:relative;height:400px;margin:4px 0 0}
+.portal{position:absolute;left:50%;top:50%;width:168px;height:168px;transform:translate(-50%,-50%);border-radius:50%;
 filter:drop-shadow(0 0 22px #7dff3aaa) drop-shadow(0 0 50px #1fe0c455)}
 .ring{position:absolute;inset:0;border-radius:50%;
 background:conic-gradient(from 0deg,#7dff3a,#1fe0c4,#c6ff6b,#0d6b3a,#7dff3a,#2bffb0,#7dff3a);
 -webkit-mask:radial-gradient(circle,transparent 30%,#000 31%,#000 70%,transparent 71%);
 mask:radial-gradient(circle,transparent 30%,#000 31%,#000 70%,transparent 71%);animation:spin 6s linear infinite}
 .ring.r2{inset:14px;opacity:.75;animation-duration:3.8s;animation-direction:reverse;filter:blur(1px)}
-.ring.r3{inset:34px;opacity:.6;animation-duration:2.4s;filter:blur(2px)}
-.core{position:absolute;inset:58px;border-radius:50%;background:radial-gradient(circle,#eaffd6 0,#9dff4f 35%,#1b7a3c 70%,#062614 100%);
+.ring.r3{inset:30px;opacity:.6;animation-duration:2.4s;filter:blur(2px)}
+.core{position:absolute;inset:52px;border-radius:50%;background:radial-gradient(circle,#eaffd6 0,#9dff4f 35%,#1b7a3c 70%,#062614 100%);
 animation:pulse 2.2s ease-in-out infinite}
 .swirl{position:absolute;inset:0;border-radius:50%;background:repeating-conic-gradient(from 0deg,#ffffff14 0 8deg,transparent 8deg 22deg);
 animation:spin 9s linear infinite reverse}
@@ -176,21 +192,25 @@ min-width:0}
 .tag.paper{color:var(--portal2);border-color:#1fe0c455}.tag.testnet{color:var(--slime);border-color:#7dff3a44}
 .legend{display:flex;gap:12px;font-size:11px;color:var(--muted);flex-wrap:wrap}
 .banner{border:1px solid var(--bad);color:var(--bad);border-radius:12px;padding:8px 12px;margin:8px 0;display:none}
+.switch{display:flex;border:1px solid var(--line);border-radius:99px;padding:3px;background:#08120dcc;margin:10px 0 0}
+.switch button{flex:1;border:0;background:none;color:var(--muted);font:inherit;font-size:12px;letter-spacing:.14em;padding:8px 6px;border-radius:99px;cursor:pointer}
+.switch button.on{background:linear-gradient(90deg,#1b5e33,#0e6b5e);color:var(--fg);box-shadow:0 0 12px #7dff3a55}
+.pod.tokpod .ship{display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#04110a;border-radius:50%}
 a{color:var(--portal2)}footer{margin-top:18px;font-size:11px;color:var(--muted);display:flex;justify-content:space-between;gap:8px}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style></head><body><main>
 <header><div><h1>PORTAL OPS</h1><div class=sub>Interdimensional arbitrage lab</div></div>
 <div class=pill><span class=dot id=dot></span><span id=clock>connecting…</span></div></header>
+<div class=switch role=tablist><button id=mT data-m=testnet>T-NET · TESTNET</button><button id=mP data-m=paper>M-NET · PAPER</button></div>
 <div class=banner id=banner></div>
 <div class=stage id=stage><div class=portal id=portal><div class=ring></div><div class="ring r2"></div><div class="ring r3"></div>
 <div class=swirl></div><div class=core></div></div></div>
-<div class=legend><span><b class=good>●</b> jumped (win)</span><span><b class=bad>●</b> fizzled (no-fill)</span>
-<span><span class="tag testnet">T-NET</span> testnet bots</span><span><span class="tag paper">M-NET</span> mainnet paper</span></div>
+<div class=legend id=legend></div>
 <div class=stats>
-<div class=stat><div class=k>Profit today · T-net</div><div class="v good" id=tp>–</div><div class=s id=tps>test XRP</div></div>
-<div class=stat><div class=k>Jumps today · T-net</div><div class=v id=tt>–</div><div class=s id=tts>&nbsp;</div></div>
-<div class=stat><div class=k>Paper profit · M-net</div><div class="v good" id=pp>–</div><div class=s id=pps>&nbsp;</div></div>
-<div class=stat><div class=k>Portal lag · M-net</div><div class=v id=pl>–</div><div class=s id=pls>after each ledger</div></div>
+<div class=stat><div class=k id=k1></div><div class=v id=v1>–</div><div class=s id=s1>&nbsp;</div></div>
+<div class=stat><div class=k id=k2></div><div class=v id=v2>–</div><div class=s id=s2>&nbsp;</div></div>
+<div class=stat><div class=k id=k3></div><div class=v id=v3>–</div><div class=s id=s3>&nbsp;</div></div>
+<div class=stat><div class=k id=k4></div><div class=v id=v4>–</div><div class=s id=s4>&nbsp;</div></div>
 </div>
 <h2>Portal traffic</h2><div class=feed id=feed></div>
 <footer><a href="/">← Lab dashboard</a><span id=tz></span></footer>
@@ -203,12 +223,18 @@ s.textContent=label;s.title=sym;s.style.background=sym==="XRP"?"#e9fff4":`hsl(${
 function route(tokens){const d=document.createElement("div");d.className="route";tokens.forEach((t,i)=>{if(i){const a=document.createElement("span");
 a.className="ar";a.textContent="›";d.append(a)}d.append(tok(t))});return d}
 function ago(s){if(s<60)return s+"s ago";if(s<3600)return Math.round(s/60)+"m ago";return Math.round(s/3600)+"h ago"}
-const pods={};let seen=new Set(),first=true,lastOk=0;
-function placePods(bots){const st=$("stage"),W=st.clientWidth,H=st.clientHeight,cx=W/2,cy=H/2,R=Math.min(W*0.42,150),Ry=Math.min(H*0.42,140);
-bots.forEach((b,i)=>{let p=pods[b.name];if(!p){p=document.createElement("div");p.className="pod";p.innerHTML='<div class=ship></div><div class=nm></div><div class=pf></div>';
+const pods={};let seen=new Set(),first=true,lastOk=0,last=null;
+let mode="testnet";try{mode=localStorage.getItem("portal-mode")||"testnet"}catch(e){}
+function setMode(m){mode=m;try{localStorage.setItem("portal-mode",m)}catch(e){}for(const k in pods){pods[k].remove();delete pods[k]}
+$("mT").classList.toggle("on",m==="testnet");$("mP").classList.toggle("on",m==="paper");first=true;seen=new Set();if(last)render(last)}
+document.querySelectorAll(".switch button").forEach(b=>b.addEventListener("click",()=>setMode(b.dataset.m)));
+function card(i,k,v,s,cls){$("k"+i).textContent=k;$("v"+i).textContent=v;$("v"+i).className="v "+(cls||"");$("s"+i).textContent=s}
+function placePods(bots){const st=$("stage"),W=st.clientWidth,H=st.clientHeight,cx=W/2,cy=H/2,R=Math.min(W*0.42,150),Ry=Math.min(H/2-62,140);
+bots.forEach((b,i)=>{let p=pods[b.name];if(!p){p=document.createElement("div");p.className="pod"+(mode==="paper"?" tokpod":"");p.innerHTML='<div class=ship></div><div class=nm></div><div class=pf></div>';
 st.append(p);pods[b.name]=p}const a=-Math.PI/2+i*2*Math.PI/bots.length;p.style.left=(cx+R*Math.cos(a))+"px";p.style.top=(cy+Ry*Math.sin(a))+"px";
-p.querySelector(".nm").textContent=(b.nick||b.name).toUpperCase();p.title=b.name;p.querySelector(".pf").textContent=`${fmt(b.profit,2)} · ${b.trades}`;
-p.classList.toggle("hot",b.last_age!==null&&b.last_age<90&&b.status==="running");p.classList.toggle("halt",b.status!=="running")})}
+p.querySelector(".nm").textContent=(b.nick||b.name).toUpperCase();p.title=b.name;
+if(mode==="paper"){const sh=p.querySelector(".ship");sh.textContent=[...b.name].slice(0,3).join("");sh.style.background=`hsl(${hue(b.name)} 85% 60%)`}p.querySelector(".pf").textContent=`${fmt(b.profit,2)} · ${b.trades}`;
+p.classList.toggle("hot",b.last_age!==null&&b.last_age<(mode==="paper"?600:90)&&b.status==="running");p.classList.toggle("halt",b.status!=="running")})}
 function zap(item){const st=$("stage"),pod=pods[item.bot],por=$("portal");const z=document.createElement("div");z.className="zap";
 item.tokens.slice(1,-1).forEach(t=>z.append(tok(t)));st.append(z);const sx=pod?parseFloat(pod.style.left):st.clientWidth/2,sy=pod?parseFloat(pod.style.top):20;
 z.style.transform=`translate(${sx-20}px,${sy-13}px)`;if(pod){pod.classList.remove("jump");void pod.offsetWidth;pod.classList.add("jump")}
@@ -216,18 +242,25 @@ requestAnimationFrame(()=>requestAnimationFrame(()=>{z.style.transform=`translat
 setTimeout(()=>{z.remove();if(item.status==="win"){por.classList.remove("burst");void por.offsetWidth;por.classList.add("burst")}},900)}
 function render(d){lastOk=Date.now();$("dot").classList.remove("off");$("clock").textContent="LIVE · "+new Date().toLocaleTimeString([], {hour:"numeric",minute:"2-digit"});
 $("tz").textContent=d.tz;const b=$("banner");b.style.display=d.killed?"block":"none";b.textContent=d.killed?"KILL SWITCH IS ON - portal closed, no trading.":"";
-const t=d.testnet;$("tp").textContent=fmt(t.profit,3);$("tt").textContent=t.trades;
-$("tts").textContent=t.trades?`${t.wins} jumped · ${t.no_fills} fizzled · ${t.win_rate}% win`:"no jumps yet today";
-const p=d.paper;if(p.shown){$("pp").textContent=fmt(p.profit,3);$("pps").textContent=`${p.trades} would-be · ${p.missed} missed`;
-$("pl").textContent=p.speed!==null?p.speed.toFixed(2)+"s":"–";$("pls").textContent=!p.scanning?"paper trading stopped":p.live?"live feed · after each ledger":"slow reads (reconnecting)";
-$("pl").className="v "+(p.scanning&&p.live?"good":"bad")}else{$("pp").textContent="–";$("pps").textContent="not running";$("pl").textContent="–"}
-placePods(d.bots);const feed=$("feed");feed.innerHTML="";const fresh=[];
-d.feed.forEach(it=>{const r=document.createElement("div");r.className="row";if(!seen.has(it.id)&&!first){r.classList.add("new");fresh.push(it)}
+last=d;const t=d.testnet,p=d.paper,paper=mode==="paper";
+if(!paper){const up=d.bots.filter(b=>b.status==="running").length;
+$("legend").innerHTML='<span><b class=good>●</b> jumped (win)</span><span><b class=bad>●</b> fizzled (no-fill)</span><span><span class="tag testnet">T-NET</span> testnet bots, test XRP</span>';
+card(1,"Profit today",fmt(t.profit,3),"test XRP","good");card(2,"Jumps today",t.trades,t.trades?`${t.wins} jumped · ${t.no_fills} fizzled`:"no jumps yet today");
+card(3,"Win rate",t.win_rate===null?"–":t.win_rate+"%",`${t.losses} losses`,"good");card(4,"Crew online",`${up}/${d.bots.length}`,up===d.bots.length?"all bots running":"check the dashboard",up===d.bots.length?"good":"bad")}
+else{$("legend").innerHTML='<span><b class=good>●</b> would-be trade</span><span><b class=bad>●</b> missed on speed</span><span><span class="tag paper">M-NET</span> mainnet paper, no XRP spent</span>';
+if(p.shown){card(1,"Paper profit today",fmt(p.profit,3),"after all fees","good");card(2,"Would-be trades",p.trades,"approved tokens only");
+card(3,"Missed on speed",p.missed,"gone before we could act",p.missed?"bad":"");
+card(4,"Portal lag",p.speed!==null?p.speed.toFixed(2)+"s":"–",!p.scanning?"paper trading stopped":p.live?"after each ledger":"slow reads (reconnecting)",p.scanning&&p.live?"good":"bad")}
+else{card(1,"Paper trading","off","not running on this server","bad");for(const i of[2,3,4])card(i,"","","")}}
+const orbit=paper?(d.paper_tokens.length?d.paper_tokens:[{name:"SCANNER",nick:"SCANNER",trades:p.trades||0,profit:p.profit||0,last_age:null,status:p.scanning?"running":"stopped"}]):d.bots;
+for(const k in pods)if(!orbit.some(b=>b.name===k)){pods[k].remove();delete pods[k]}
+placePods(orbit);const feed=$("feed");feed.innerHTML="";const fresh=[];const items=paper?d.paper_feed:d.feed;
+items.forEach(it=>{const r=document.createElement("div");r.className="row";if(!seen.has(it.id)&&!first){r.classList.add("new");fresh.push(it)}
 r.append(route(it.tokens));const m=document.createElement("div");m.className="meta";
-m.innerHTML=`<div class="p ${it.status==="win"?"good":"bad"}">${it.status==="win"?fmt(it.profit):"fizzled"}</div><div class=w><span class="tag ${it.kind}">${it.kind==="paper"?"M-NET":"T-NET"}</span> ${it.kind==="paper"?"paper":(it.nick||it.bot)} · ${ago(it.age)}</div>`;
-r.append(m);feed.append(r)});if(!d.feed.length)feed.innerHTML='<div class=row><span class=w>No portal traffic yet today.</span></div>';
-fresh.slice(0,6).reverse().forEach((it,i)=>setTimeout(()=>zap(it),i*350));seen=new Set(d.feed.map(x=>x.id));first=false}
+m.innerHTML=`<div class="p ${it.status==="win"?"good":"bad"}">${it.status==="win"?fmt(it.profit):it.status==="missed"?"missed "+fmt(it.profit):"fizzled"}</div><div class=w><span class="tag ${it.kind}">${it.kind==="paper"?"M-NET":"T-NET"}</span> ${it.kind==="paper"?"paper":(it.nick||it.bot)} · ${ago(it.age)}</div>`;
+r.append(m);feed.append(r)});if(!items.length)feed.innerHTML='<div class=row><span class=w>No portal traffic yet.</span></div>';
+fresh.slice(0,6).reverse().forEach((it,i)=>setTimeout(()=>zap(it),i*350));seen=new Set(items.map(x=>x.id));first=false}
 async function tick(){try{const r=await fetch("/live.json",{cache:"no-store",credentials:"same-origin"});if(r.status===401||r.redirected){location.href="/login";return}
 render(await r.json())}catch(e){}if(Date.now()-lastOk>15000){$("dot").classList.add("off");$("clock").textContent="signal lost…"}}
-tick();setInterval(tick,4000);addEventListener("resize",()=>{for(const k in pods)pods[k].remove();for(const k in pods)delete pods[k]});
+setMode(mode);tick();setInterval(tick,4000);addEventListener("resize",()=>{for(const k in pods)pods[k].remove();for(const k in pods)delete pods[k]});
 </script></body></html>"""

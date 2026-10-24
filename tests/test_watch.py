@@ -175,3 +175,20 @@ def test_dashboard_shows_paper_trading(env, monkeypatch):
     out = render_paper(db)
     assert "Paper trading (mainnet" in out and "Would-be trades today" in out
     assert "→ XRP" in out and "3 ledgers" in out      # the would-be trade is listed
+
+
+def test_live_view_paper_mode_data(env, monkeypatch):
+    import xrplarb.watch as watch
+    from xrplarb.config import Settings
+    from xrplarb.db import DB
+    from xrplarb.liveview import live_data
+
+    db = DB()
+    monkeypatch.setattr(watch, "Net", lambda *a, **k: FakeLedger(gap_scans=3))
+    asyncio.run(watch.run_watch(Settings(network="mainnet", scan_interval_seconds=0), db, max_scans=6))
+    db.execute("UPDATE watch_episodes SET would_trade=1")
+    d = live_data(db, "testnet")
+    assert d["paper"]["shown"] and d["paper"]["trades"] >= 1
+    assert d["paper_feed"] and {x["status"] for x in d["paper_feed"]} <= {"win", "missed"}
+    assert d["paper_tokens"] and d["paper_tokens"][0]["trades"] >= 1
+    assert all(x["kind"] == "testnet" for x in d["feed"])   # the two modes never mix
