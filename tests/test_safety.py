@@ -239,3 +239,4 @@ def test_live_view_needs_login_and_shows_no_secrets(env):
     assert j.status_code == 200 and SEED not in j.text
     data = j.json()
     assert data["bots"][0]["name"] == "bot1" and data["paper"]["shown"] is False and data["testnet"]["trades"] == 0
+    assert data["bots"][0]["nick"] == "QUASAR"

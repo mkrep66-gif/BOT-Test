@@ -11,6 +11,7 @@ import time
 from decimal import Decimal
 from typing import Dict, List
 
+from .config import BOT_NICKNAMES
 from .db import DB
 from .history import day_result
 from .localtime import day_start_utc, fmt_local, today_local, tz_label
@@ -53,6 +54,7 @@ def live_data(db: DB, network: str = "testnet") -> Dict:
         alive = bool(h) and _age(h["ts"]) < 120
         bots.append({
             "name": b,
+            "nick": BOT_NICKNAMES.get(b, b),
             "status": (h["status"] if alive else "no heartbeat") if h else "unknown",
             "trades": t["n"] or 0,
             "profit": round(t["p"] or 0.0, 4),
@@ -64,7 +66,8 @@ def live_data(db: DB, network: str = "testnet") -> Dict:
         "SELECT id, ts, bot, route, status, profit_xrp FROM trades WHERE network=? AND status IN ('win','loss','failed') "
         "ORDER BY ts DESC LIMIT 25", (network,)):
         feed.append({"id": f"t{t['id']}", "kind": "testnet", "age": round(_age(t["ts"])), "when": fmt_local(t["ts"]),
-                     "bot": t["bot"], "tokens": _symbols(t["route"]), "status": t["status"],
+                     "bot": t["bot"], "nick": BOT_NICKNAMES.get(t["bot"], t["bot"]),
+                     "tokens": _symbols(t["route"]), "status": t["status"],
                      "profit": round(_num(t["profit_xrp"]), 4)})
 
     paper = {"shown": False}
@@ -204,7 +207,7 @@ const pods={};let seen=new Set(),first=true,lastOk=0;
 function placePods(bots){const st=$("stage"),W=st.clientWidth,H=st.clientHeight,cx=W/2,cy=H/2,R=Math.min(W*0.42,150),Ry=Math.min(H*0.42,140);
 bots.forEach((b,i)=>{let p=pods[b.name];if(!p){p=document.createElement("div");p.className="pod";p.innerHTML='<div class=ship></div><div class=nm></div><div class=pf></div>';
 st.append(p);pods[b.name]=p}const a=-Math.PI/2+i*2*Math.PI/bots.length;p.style.left=(cx+R*Math.cos(a))+"px";p.style.top=(cy+Ry*Math.sin(a))+"px";
-p.querySelector(".nm").textContent=b.name.toUpperCase();p.querySelector(".pf").textContent=`${fmt(b.profit,2)} · ${b.trades}`;
+p.querySelector(".nm").textContent=(b.nick||b.name).toUpperCase();p.title=b.name;p.querySelector(".pf").textContent=`${fmt(b.profit,2)} · ${b.trades}`;
 p.classList.toggle("hot",b.last_age!==null&&b.last_age<90&&b.status==="running");p.classList.toggle("halt",b.status!=="running")})}
 function zap(item){const st=$("stage"),pod=pods[item.bot],por=$("portal");const z=document.createElement("div");z.className="zap";
 item.tokens.slice(1,-1).forEach(t=>z.append(tok(t)));st.append(z);const sx=pod?parseFloat(pod.style.left):st.clientWidth/2,sy=pod?parseFloat(pod.style.top):20;
@@ -221,7 +224,7 @@ $("pl").className="v "+(p.scanning&&p.live?"good":"bad")}else{$("pp").textConten
 placePods(d.bots);const feed=$("feed");feed.innerHTML="";const fresh=[];
 d.feed.forEach(it=>{const r=document.createElement("div");r.className="row";if(!seen.has(it.id)&&!first){r.classList.add("new");fresh.push(it)}
 r.append(route(it.tokens));const m=document.createElement("div");m.className="meta";
-m.innerHTML=`<div class="p ${it.status==="win"?"good":"bad"}">${it.status==="win"?fmt(it.profit):"fizzled"}</div><div class=w><span class="tag ${it.kind}">${it.kind==="paper"?"M-NET":"T-NET"}</span> ${it.kind==="paper"?"paper":it.bot} · ${ago(it.age)}</div>`;
+m.innerHTML=`<div class="p ${it.status==="win"?"good":"bad"}">${it.status==="win"?fmt(it.profit):"fizzled"}</div><div class=w><span class="tag ${it.kind}">${it.kind==="paper"?"M-NET":"T-NET"}</span> ${it.kind==="paper"?"paper":(it.nick||it.bot)} · ${ago(it.age)}</div>`;
 r.append(m);feed.append(r)});if(!d.feed.length)feed.innerHTML='<div class=row><span class=w>No portal traffic yet today.</span></div>';
 fresh.slice(0,6).reverse().forEach((it,i)=>setTimeout(()=>zap(it),i*350));seen=new Set(d.feed.map(x=>x.id));first=false}
 async function tick(){try{const r=await fetch("/live.json",{cache:"no-store",credentials:"same-origin"});if(r.status===401||r.redirected){location.href="/login";return}

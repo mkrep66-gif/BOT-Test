@@ -52,6 +52,17 @@ def D(v: Any) -> Decimal:
     return Decimal(str(v))
 
 
+# Display names for the bots (Live page, Telegram). Wallets, history and
+# settings stay filed under bot1..bot5.
+BOT_NICKNAMES = {"bot1": "QUASAR", "bot2": "VORTEX", "bot3": "GLORP", "bot4": "NEBULA-9", "bot5": "ZAPPO"}
+
+
+def bot_label(bot: str) -> str:
+    """'QUASAR (bot1)' - or just the name if it has no nickname."""
+    nick = BOT_NICKNAMES.get(bot)
+    return f"{nick} ({bot})" if nick else bot
+
+
 @dataclass
 class Settings:
     network: str = "testnet"

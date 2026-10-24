@@ -20,7 +20,7 @@ from typing import Dict, List, Optional
 from . import secrets_store
 from .alerts import Alerter
 from .bot import Bot, MarketLocks
-from .config import Settings, blocked_reason, blocklist_path, load_blocklist, load_token_pairs, load_tokens
+from .config import Settings, blocked_reason, bot_label, blocklist_path, load_blocklist, load_token_pairs, load_tokens
 from .db import DB
 from .market import MarketFeed, MarketSnapshot
 from .redact import register_secrets
@@ -372,7 +372,7 @@ class Supervisor:
         if cmd == "/status":
             lines = []
             for b in self.bots:
-                lines.append(f"{b.name}: {'HALTED - ' + b.halted() if b.halted() else 'running'}, {b.xrp_balance:.3f} XRP")
+                lines.append(f"{bot_label(b.name)}: {'HALTED - ' + b.halted() if b.halted() else 'running'}, {b.xrp_balance:.3f} XRP")
             return "\n".join(lines) or "no bots"
         if cmd == "/kill":
             if not pin_ok:
